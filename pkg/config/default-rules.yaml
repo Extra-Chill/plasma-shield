@@ -2,85 +2,12 @@
 # These rules provide baseline protection for AI agents.
 # Customize as needed for your environment.
 
+# NOTE: Plasma Shield operates at the NETWORK level.
+# It can block domains, URLs, and request patterns.
+# It CANNOT block local exec commands — use OS-level controls for that
+# (limited user permissions, containers, seccomp, AppArmor).
+
 rules:
-  # ============================================
-  # DESTRUCTIVE COMMANDS
-  # ============================================
-  
-  - id: block-rm-rf-root
-    pattern: "rm -rf /"
-    action: block
-    description: "Block recursive deletion of root filesystem"
-    enabled: true
-
-  - id: block-rm-rf-wildcard
-    pattern: "rm -rf *"
-    action: block
-    description: "Block recursive deletion with wildcard"
-    enabled: true
-
-  - id: block-fork-bomb
-    pattern: ":(){ :|:& };:"
-    action: block
-    description: "Block bash fork bomb"
-    enabled: true
-
-  - id: block-dd-wipe
-    pattern: "dd if=/dev/zero of=/dev/sd"
-    action: block
-    description: "Block disk wiping with dd"
-    enabled: true
-
-  - id: block-mkfs
-    pattern: "mkfs"
-    action: block
-    description: "Block filesystem formatting"
-    enabled: true
-
-  # ============================================
-  # REMOTE CODE EXECUTION
-  # ============================================
-
-  - id: block-curl-pipe-sh
-    pattern: "curl * | *sh"
-    action: block
-    description: "Block piping curl output to shell"
-    enabled: true
-
-  - id: block-wget-pipe-sh
-    pattern: "wget * | *sh"
-    action: block
-    description: "Block piping wget output to shell"
-    enabled: true
-
-  - id: block-curl-pipe-bash
-    pattern: "curl * | bash"
-    action: block
-    description: "Block piping curl output to bash"
-    enabled: true
-
-  # ============================================
-  # PRIVILEGE ESCALATION
-  # ============================================
-
-  - id: block-chmod-777-etc
-    pattern: "chmod 777 /etc"
-    action: block
-    description: "Block making /etc world-writable"
-    enabled: true
-
-  - id: block-chmod-passwd
-    pattern: "chmod * /etc/passwd"
-    action: block
-    description: "Block modifying passwd permissions"
-    enabled: true
-
-  - id: block-chmod-shadow
-    pattern: "chmod * /etc/shadow"
-    action: block
-    description: "Block modifying shadow permissions"
-    enabled: true
-
   # ============================================
   # DANGEROUS DOMAINS
   # ============================================
@@ -95,6 +22,18 @@ rules:
     domain: "*.temp.sh"
     action: block
     description: "Block temporary file hosting services"
+    enabled: true
+
+  - id: block-transfer-sh
+    domain: "transfer.sh"
+    action: block
+    description: "Block file transfer service"
+    enabled: true
+
+  - id: block-0x0
+    domain: "0x0.st"
+    action: block
+    description: "Block anonymous file hosting"
     enabled: true
 
   # ============================================
@@ -112,3 +51,64 @@ rules:
     action: block
     description: "Block Monero mining domains"
     enabled: true
+
+  - id: block-nicehash
+    domain: "*.nicehash.com"
+    action: block
+    description: "Block NiceHash mining"
+    enabled: true
+
+  # ============================================
+  # C2 / EXFILTRATION COMMON
+  # ============================================
+
+  - id: block-ngrok
+    domain: "*.ngrok.io"
+    action: block
+    description: "Block ngrok tunnels (common for C2)"
+    enabled: true
+
+  - id: block-serveo
+    domain: "serveo.net"
+    action: block
+    description: "Block serveo tunnels"
+    enabled: true
+
+  - id: block-localtunnel
+    domain: "*.loca.lt"
+    action: block
+    description: "Block localtunnel"
+    enabled: true
+
+  # ============================================
+  # REQUEST PATTERNS (HTTP inspection)
+  # ============================================
+
+  - id: block-sensitive-env-exfil
+    url_pattern: "*env=*AWS_*"
+    action: block
+    description: "Block URLs containing AWS credentials in query params"
+    enabled: true
+
+  - id: block-api-key-exfil
+    url_pattern: "*api_key=*"
+    action: block
+    description: "Block URLs with api_key in query params"
+    enabled: true
+
+# ============================================
+# NOTES ON EXEC COMMAND FILTERING
+# ============================================
+#
+# Commands like `rm -rf /` or `curl | bash` run LOCALLY on the agent.
+# The shield cannot see or block them at the network level.
+#
+# Protect against destructive exec with:
+#
+# 1. Run agent as limited user (no root)
+# 2. Use Docker with --cap-drop=ALL --read-only
+# 3. Apply seccomp profiles to restrict syscalls
+# 4. Use AppArmor/SELinux for mandatory access control
+# 5. Restrict PATH to safe commands only
+#
+# See docs/exec-hardening.md for detailed guidance.

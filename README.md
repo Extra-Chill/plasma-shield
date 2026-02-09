@@ -140,23 +140,6 @@ Agents cannot reach the management API. It's on a separate network interface tha
 Plasma Shield ships with sensible defaults:
 
 ```yaml
-# Block obviously destructive commands
-- pattern: "rm -rf /"
-  action: block
-  
-- pattern: ":(){ :|:& };:"  # Fork bomb
-  action: block
-
-- pattern: "dd if=/dev/zero of=/dev/sd"
-  action: block
-
-# Block piping from internet to shell
-- pattern: "curl * | *sh"
-  action: block
-  
-- pattern: "wget * | *sh"
-  action: block
-
 # Block access to common bad neighborhoods  
 - domain: "*.ru"
   action: block
@@ -176,7 +159,6 @@ Customize rules via CLI, API, or config file.
 - [ ] Agent lockdown scripts (iptables)
 - [ ] WireGuard management interface
 - [ ] Dashboard UI
-- [ ] OpenClaw integration hooks
 - [ ] Multi-tenant support (for Spawn)
 
 ## License

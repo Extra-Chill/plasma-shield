@@ -24,7 +24,7 @@ Responsibilities:
 - Log all traffic for audit
 - Expose management API (on separate network interface)
 
-### Shield CLI (`shield`)
+### Shield CLI (`plasma-shield`)
 
 Human-only command-line interface. Installed on the operator's personal machine.
 
@@ -33,9 +33,9 @@ Communicates with the shield router over a secure channel (WireGuard, SSH tunnel
 ### Rule Engine
 
 Pattern-matching engine that evaluates:
-- Shell commands (via exec inspection)
 - Domain names (via DNS/SNI inspection)
 - URL patterns (via HTTP inspection)
+- Request headers and bodies (optional deep inspection)
 
 Rules are managed externally and pushed to the router. Agents cannot view or modify rules.
 
@@ -101,21 +101,15 @@ Rules are managed externally and pushed to the router. Agents cannot view or mod
 4. Response flows back through proxy to agent
 ```
 
-### Exec Command (with OpenClaw integration)
+### Exec Commands
 
-```
-1. OpenClaw receives tool call: exec("rm -rf /tmp/*")
+Exec commands run locally on the agent machine, not over the network. The shield cannot directly inspect them. Exec safety is enforced through:
 
-2. OpenClaw's pre-exec hook calls shield:
-   POST https://shield:8443/exec/check
-   {"command": "rm -rf /tmp/*", "agent_token": "xxx"}
+1. **OS-level permissions** — Agent runs as limited user (no root, restricted paths)
+2. **Container isolation** — Run OpenClaw in Docker with limited capabilities
+3. **seccomp/AppArmor** — Kernel-level syscall restrictions (advanced)
 
-3. Shield checks command against rules
-   → Pattern "rm -rf" matches
-   → Returns: {"allowed": false, "rule": "block-rm-rf"}
-
-4. OpenClaw blocks execution, returns error to model
-```
+The shield focuses on what it CAN control: network traffic. For exec, use defense in depth at the OS layer.
 
 ## Security Model
 
