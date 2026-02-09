@@ -149,6 +149,61 @@ The shield focuses on what it CAN control: network traffic. For exec, use defens
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Operating Modes
+
+The shield supports multiple operating modes, controlled via CLI or management API.
+
+### Enforce Mode (default)
+
+Normal operation. Requests matching block rules are rejected.
+
+```
+Agent → Shield → Rule Match? → Block (403) or Forward
+```
+
+### Audit Mode
+
+Testing/debugging mode. All requests are logged but never blocked. The agent cannot distinguish audit mode from enforce mode — blocked requests still appear to fail from the agent's perspective (optional: can configure to pass through).
+
+```
+Agent → Shield → Rule Match? → Log + Forward (always)
+```
+
+Use cases:
+- Initial deployment testing
+- Debugging false positives
+- Monitoring before enforcement
+
+### Lockdown Mode
+
+Emergency mode. ALL outbound requests are blocked. Use when an agent is compromised.
+
+```
+Agent → Shield → Block Everything (503)
+```
+
+### Per-Agent Overrides
+
+Each agent can have its own mode override:
+
+```bash
+plasma-shield agent mode <agent-id> audit    # This agent in audit mode
+plasma-shield agent mode <agent-id> enforce  # Back to normal
+plasma-shield agent mode <agent-id> lockdown # Emergency stop
+```
+
+Global mode affects all agents without explicit overrides.
+
+## Emergency Access
+
+**Never store bypass keys on agent VPS.** If you need emergency access:
+
+1. **Hetzner Console** — Out-of-band serial console via web UI. No network involved.
+2. **Shield passthrough** — Temporarily set agent to audit mode from shield CLI.
+3. **WireGuard direct** — If shield router has WireGuard to agent (Commodore-only).
+
+The agent must never have a mechanism to bypass its own restrictions.
+
 ## Failure Modes
 
 ### Shield Router Down

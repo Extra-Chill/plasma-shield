@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Extra-Chill/plasma-shield/internal/mode"
 	"github.com/Extra-Chill/plasma-shield/internal/proxy"
 	"github.com/Extra-Chill/plasma-shield/internal/rules"
 )
@@ -30,6 +32,10 @@ func main() {
 
 	fmt.Printf("Plasma Shield Proxy v%s\n", version)
 
+	// Initialize mode manager
+	modeManager := mode.NewManager()
+	log.Printf("Default mode: %s", modeManager.GlobalMode())
+
 	// Initialize rule engine
 	engine := rules.NewEngine()
 	if *rulesFile != "" {
@@ -40,7 +46,7 @@ func main() {
 	}
 
 	// Create inspector and handlers
-	inspector := proxy.NewInspector(engine)
+	inspector := proxy.NewInspector(engine, modeManager)
 	proxyHandler := proxy.NewHandler(inspector)
 	execCheckHandler := proxy.NewExecCheckHandler(inspector)
 
@@ -53,12 +59,55 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Create API server with /exec/check endpoint
+	// Create API server with management endpoints
 	apiMux := http.NewServeMux()
 	apiMux.Handle("/exec/check", execCheckHandler)
 	apiMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
+	})
+
+	// Mode management endpoints
+	apiMux.HandleFunc("/mode", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// Get current global mode
+			resp := map[string]interface{}{
+				"global_mode":  string(modeManager.GlobalMode()),
+				"agent_modes": modeManager.AllAgentModes(),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+
+		case http.MethodPut, http.MethodPost:
+			// Set global mode
+			var req struct {
+				Mode string `json:"mode"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+			switch mode.Mode(req.Mode) {
+			case mode.Enforce, mode.Audit, mode.Lockdown:
+				modeManager.SetGlobalMode(mode.Mode(req.Mode))
+				log.Printf("Global mode changed to: %s", req.Mode)
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]string{"status": "ok", "mode": req.Mode})
+			default:
+				http.Error(w, "Invalid mode. Use: enforce, audit, lockdown", http.StatusBadRequest)
+			}
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	apiMux.HandleFunc("/agent/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract agent ID from path: /agent/{id}/mode
+		// Simple implementation - production would use a router
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "not yet implemented"})
 	})
 
 	apiServer := &http.Server{

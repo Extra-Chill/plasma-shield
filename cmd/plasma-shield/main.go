@@ -23,9 +23,19 @@ func main() {
 	case "status":
 		fmt.Println("Shield status: not connected")
 		fmt.Println("Run 'plasma-shield auth login' to connect to your shield router")
+	case "mode":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: plasma-shield mode <enforce|audit|lockdown>")
+			fmt.Println("\nModes:")
+			fmt.Println("  enforce   Normal operation - block matching requests (default)")
+			fmt.Println("  audit     Log all requests but never block (testing)")
+			fmt.Println("  lockdown  Block ALL outbound requests (emergency)")
+			os.Exit(1)
+		}
+		handleMode(os.Args[2:])
 	case "agent":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: plasma-shield agent <list|pause|kill> [agent-id]")
+			fmt.Println("Usage: plasma-shield agent <list|pause|kill|mode> [agent-id] [options]")
 			os.Exit(1)
 		}
 		handleAgent(os.Args[2:])
@@ -57,19 +67,26 @@ Usage: plasma-shield <command> [options]
 
 Commands:
   status          Show shield connection status
-  agent           Manage agents (list, pause, kill)
+  mode            Set global operating mode (enforce/audit/lockdown)
+  agent           Manage agents (list, pause, kill, mode)
   rules           Manage blocking rules
   logs            View traffic logs
   auth            Authentication (login, logout)
   version         Show version
 
+Modes:
+  enforce         Normal operation - block matching requests (default)
+  audit           Log everything but never block (testing/debugging)
+  lockdown        Block ALL outbound requests (emergency)
+
 Examples:
   plasma-shield status
+  plasma-shield mode audit                    # Enable audit mode globally
+  plasma-shield mode enforce                  # Back to normal
   plasma-shield agent list
-  plasma-shield agent pause my-agent
-  plasma-shield agent kill my-agent
-  plasma-shield rules add --pattern "rm -rf"
-  plasma-shield logs --tail --agent my-agent
+  plasma-shield agent mode sarai audit        # Audit mode for one agent
+  plasma-shield agent kill sarai              # Emergency stop
+  plasma-shield logs --tail --agent sarai
 
 Documentation: https://github.com/Extra-Chill/plasma-shield`)
 }
@@ -88,4 +105,17 @@ func handleLogs(args []string) {
 
 func handleAuth(args []string) {
 	fmt.Println("Authentication not yet implemented")
+}
+
+func handleMode(args []string) {
+	mode := args[0]
+	switch mode {
+	case "enforce", "audit", "lockdown":
+		fmt.Printf("Setting global mode to: %s\n", mode)
+		fmt.Println("(API call not yet implemented)")
+	default:
+		fmt.Printf("Unknown mode: %s\n", mode)
+		fmt.Println("Valid modes: enforce, audit, lockdown")
+		os.Exit(1)
+	}
 }
