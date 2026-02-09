@@ -1,0 +1,114 @@
+# Plasma Shield Default Rules
+# These rules provide baseline protection for AI agents.
+# Customize as needed for your environment.
+
+rules:
+  # ============================================
+  # DESTRUCTIVE COMMANDS
+  # ============================================
+  
+  - id: block-rm-rf-root
+    pattern: "rm -rf /"
+    action: block
+    description: "Block recursive deletion of root filesystem"
+    enabled: true
+
+  - id: block-rm-rf-wildcard
+    pattern: "rm -rf *"
+    action: block
+    description: "Block recursive deletion with wildcard"
+    enabled: true
+
+  - id: block-fork-bomb
+    pattern: ":(){ :|:& };:"
+    action: block
+    description: "Block bash fork bomb"
+    enabled: true
+
+  - id: block-dd-wipe
+    pattern: "dd if=/dev/zero of=/dev/sd"
+    action: block
+    description: "Block disk wiping with dd"
+    enabled: true
+
+  - id: block-mkfs
+    pattern: "mkfs"
+    action: block
+    description: "Block filesystem formatting"
+    enabled: true
+
+  # ============================================
+  # REMOTE CODE EXECUTION
+  # ============================================
+
+  - id: block-curl-pipe-sh
+    pattern: "curl * | *sh"
+    action: block
+    description: "Block piping curl output to shell"
+    enabled: true
+
+  - id: block-wget-pipe-sh
+    pattern: "wget * | *sh"
+    action: block
+    description: "Block piping wget output to shell"
+    enabled: true
+
+  - id: block-curl-pipe-bash
+    pattern: "curl * | bash"
+    action: block
+    description: "Block piping curl output to bash"
+    enabled: true
+
+  # ============================================
+  # PRIVILEGE ESCALATION
+  # ============================================
+
+  - id: block-chmod-777-etc
+    pattern: "chmod 777 /etc"
+    action: block
+    description: "Block making /etc world-writable"
+    enabled: true
+
+  - id: block-chmod-passwd
+    pattern: "chmod * /etc/passwd"
+    action: block
+    description: "Block modifying passwd permissions"
+    enabled: true
+
+  - id: block-chmod-shadow
+    pattern: "chmod * /etc/shadow"
+    action: block
+    description: "Block modifying shadow permissions"
+    enabled: true
+
+  # ============================================
+  # DANGEROUS DOMAINS
+  # ============================================
+
+  - id: block-pastebin
+    domain: "pastebin.com"
+    action: block
+    description: "Block pastebin (common for malware hosting)"
+    enabled: true
+
+  - id: block-temp-file-hosts
+    domain: "*.temp.sh"
+    action: block
+    description: "Block temporary file hosting services"
+    enabled: true
+
+  # ============================================
+  # CRYPTOCURRENCY MINING
+  # ============================================
+
+  - id: block-crypto-pools
+    domain: "*pool.com"
+    action: block
+    description: "Block common mining pool domains"
+    enabled: true
+
+  - id: block-xmr-mining
+    domain: "*xmr*"
+    action: block
+    description: "Block Monero mining domains"
+    enabled: true
