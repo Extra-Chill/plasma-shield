@@ -52,9 +52,9 @@ It does NOT protect against:
 
 | Component | Description |
 |-----------|-------------|
-| `proxy` | The shield router — forwards traffic, enforces rules |
-| `shield` | CLI for managing the shield from your terminal |
-| `dashboard` | Web UI for monitoring and control (optional) |
+| `plasma-shield-router` | The shield router — forwards traffic, enforces rules |
+| `plasma-shield` | CLI for managing the shield from your terminal |
+| `dashboard` | Homeboy module for monitoring and control (optional) |
 
 ## Quick Start
 
@@ -87,19 +87,19 @@ This configures iptables to force all traffic through the shield.
 brew install extra-chill/tap/plasma-shield
 
 # Connect to your shield
-shield auth login
+plasma-shield auth login
 
 # View agents
-shield agent list
+plasma-shield agent list
 
 # Add a blocking rule
-shield rules add --pattern "rm -rf /" --action block
+plasma-shield rules add --pattern "rm -rf /" --action block
 
 # Watch traffic in real-time
-shield logs --tail
+plasma-shield logs --tail
 
 # Emergency stop an agent
-shield agent kill <agent-id>
+plasma-shield agent kill <agent-id>
 ```
 
 ## Architecture

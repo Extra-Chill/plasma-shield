@@ -19,19 +19,19 @@ func main() {
 
 	switch os.Args[1] {
 	case "version", "--version", "-v":
-		fmt.Printf("shield v%s\n", version)
+		fmt.Printf("plasma-shield v%s\n", version)
 	case "status":
 		fmt.Println("Shield status: not connected")
-		fmt.Println("Run 'shield auth login' to connect to your shield router")
+		fmt.Println("Run 'plasma-shield auth login' to connect to your shield router")
 	case "agent":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: shield agent <list|pause|kill> [agent-id]")
+			fmt.Println("Usage: plasma-shield agent <list|pause|kill> [agent-id]")
 			os.Exit(1)
 		}
 		handleAgent(os.Args[2:])
 	case "rules":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: shield rules <list|add|remove> [options]")
+			fmt.Println("Usage: plasma-shield rules <list|add|remove> [options]")
 			os.Exit(1)
 		}
 		handleRules(os.Args[2:])
@@ -39,7 +39,7 @@ func main() {
 		handleLogs(os.Args[2:])
 	case "auth":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: shield auth <login|logout>")
+			fmt.Println("Usage: plasma-shield auth <login|logout>")
 			os.Exit(1)
 		}
 		handleAuth(os.Args[2:])
@@ -51,9 +51,9 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`Plasma Shield CLI
+	fmt.Println(`Plasma Shield CLI - Network security for AI agent fleets
 
-Usage: shield <command> [options]
+Usage: plasma-shield <command> [options]
 
 Commands:
   status          Show shield connection status
@@ -64,11 +64,14 @@ Commands:
   version         Show version
 
 Examples:
-  shield status
-  shield agent list
-  shield agent pause my-agent
-  shield rules add --pattern "rm -rf"
-  shield logs --tail --agent my-agent`)
+  plasma-shield status
+  plasma-shield agent list
+  plasma-shield agent pause my-agent
+  plasma-shield agent kill my-agent
+  plasma-shield rules add --pattern "rm -rf"
+  plasma-shield logs --tail --agent my-agent
+
+Documentation: https://github.com/Extra-Chill/plasma-shield`)
 }
 
 func handleAgent(args []string) {
