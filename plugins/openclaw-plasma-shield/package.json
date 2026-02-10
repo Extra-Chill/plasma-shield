@@ -1,9 +1,0 @@
-{
-  "name": "openclaw-plasma-shield",
-  "version": "0.1.0",
-  "description": "OpenClaw plugin for Plasma Shield security integration",
-  "main": "index.ts",
-  "types": "index.ts",
-  "keywords": ["openclaw", "plugin", "security", "plasma-shield"],
-  "license": "MIT"
-}
