@@ -226,6 +226,8 @@ make run-cli
 - [x] HTTP/HTTPS proxy (core implementation)
 - [x] Web dashboard (embedded Alpine.js UI)
 - [ ] Agent lockdown scripts (iptables)
+- [ ] SSH bastion service (temporary debug access)
+- [ ] Access grant system (time-limited, logged, revocable)
 - [ ] WireGuard management interface
 - [ ] Multi-tenant support
 - [ ] Distributed shield mesh

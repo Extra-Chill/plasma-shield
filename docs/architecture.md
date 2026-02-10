@@ -261,6 +261,51 @@ If the shield router is unreachable:
 1. **Cloud Console** — Out-of-band serial console via hosting provider
 2. **No bypass keys on agent** — The agent must never have a mechanism to bypass its own restrictions
 
+## SSH Bastion Service (Planned)
+
+For SaaS deployments, operators need a way to debug customer agents without storing SSH keys on the shield or giving agents SSH access to each other.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Shield Router                         │
+│                                                         │
+│   HTTP Proxy (:8080)     SSH Bastion (:2222)           │
+│         │                       │                       │
+│         └───── Admin Panel ─────┘                       │
+│              (localhost:9000)                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Access Levels
+
+| Role | Can Access | How |
+|------|------------|-----|
+| **Commodore** (SaaS admin) | Any tenant | Grant via admin panel |
+| **Captain** (fleet owner) | Their own agents | Grant via their fleet panel |
+| **Crew** (agents) | Nothing | No SSH capability |
+
+### Flow
+
+1. Operator opens admin panel (localhost via SSH tunnel to their machine)
+2. Grants temporary access: `plasma-shield access grant --target <agent> --duration 30m`
+3. Shield issues short-lived SSH certificate
+4. Operator SSHs through bastion: `ssh -J bastion:2222 agent-hostname`
+5. All commands logged, access auto-revokes when duration expires
+
+### Key Principles
+
+- **No standing access** — Every session requires explicit grant
+- **No stored keys** — Bastion uses certificate-based auth, not key files
+- **Time-boxed** — Access expires automatically
+- **Fully logged** — Every command recorded for audit
+- **Scoped** — Grant specifies exactly which agent(s)
+
+### Not Implemented Yet
+
+This is planned architecture. Current state requires direct SSH from operator machines with pre-distributed keys.
+
 ## Traffic Flow
 
 ### Outbound Web Request
