@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Extra-Chill/plasma-shield/internal/bastion"
 	"github.com/Extra-Chill/plasma-shield/internal/fleet"
 	"github.com/Extra-Chill/plasma-shield/internal/mode"
 	"github.com/Extra-Chill/plasma-shield/internal/proxy"
@@ -69,6 +70,7 @@ func main() {
 	// Parse command line flags
 	proxyAddr := flag.String("proxy-addr", ":8080", "Address for the proxy server")
 	apiAddr := flag.String("api-addr", "127.0.0.1:9000", "Address for the management API and web UI (localhost only)")
+	bastionAddr := flag.String("bastion-addr", "", "Address for the SSH bastion (disabled if empty)")
 	rulesFile := flag.String("rules", "", "Path to rules YAML file")
 	flag.Parse()
 
@@ -130,8 +132,8 @@ func main() {
 		switch r.Method {
 		case http.MethodGet:
 			resp := map[string]interface{}{
-				"global_mode":  string(modeManager.GlobalMode()),
-				"agent_modes":  modeManager.AllAgentModes(),
+				"global_mode": string(modeManager.GlobalMode()),
+				"agent_modes": modeManager.AllAgentModes(),
 			}
 			json.NewEncoder(w).Encode(resp)
 
@@ -391,6 +393,19 @@ func main() {
 		IdleTimeout:  30 * time.Second,
 	}
 
+	var bastionServer *bastion.Server
+	if *bastionAddr != "" {
+		server, err := bastion.NewServer(bastion.Config{Addr: *bastionAddr})
+		if err != nil {
+			log.Fatalf("Failed to initialize bastion: %v", err)
+		}
+		if err := server.Start(); err != nil {
+			log.Fatalf("Failed to start bastion: %v", err)
+		}
+		bastionServer = server
+		log.Printf("Starting SSH bastion on %s", bastionServer.Addr())
+	}
+
 	// Start servers
 	go func() {
 		log.Printf("Starting proxy server on %s", *proxyAddr)
@@ -420,6 +435,9 @@ func main() {
 
 	proxyServer.Shutdown(ctx)
 	apiServer.Shutdown(ctx)
+	if bastionServer != nil {
+		bastionServer.Close()
+	}
 
 	log.Println("Shutdown complete")
 }
