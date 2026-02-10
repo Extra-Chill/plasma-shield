@@ -75,7 +75,7 @@ Multiple users, each with their own isolated fleet. Users cannot see each other.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Spawn Network (Operator View)                   │
+│                  Multi-Tenant Network (Operator View)               │
 │                  Operator can see, but NOT access                   │
 │                                                                     │
 │   ┌─────────────────────────┐     ┌─────────────────────────┐      │
@@ -88,7 +88,7 @@ Multiple users, each with their own isolated fleet. Users cannot see each other.
 │   └─────────────────────────┘     └─────────────────────────┘      │
 │                                                                     │
 │   Users don't know about each other                                 │
-│   Users don't know they're part of Spawn                            │
+│   Users don't know they're part of a larger network                 │
 │   Agents don't know Plasma Shield exists                            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -110,7 +110,7 @@ Shields can be nested to arbitrary depth:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Outer Shield (Spawn Infrastructure)                             │
+│  Outer Shield (SaaS/Operator Infrastructure)                     │
 │  - Enforces tenant isolation                                     │
 │  - Operator can see topology                                     │
 │                                                                  │
@@ -282,9 +282,9 @@ For SaaS deployments, operators need a way to debug customer agents without stor
 
 | Role | Can Access | How |
 |------|------------|-----|
-| **Commodore** (SaaS admin) | Any tenant | Grant via admin panel |
-| **Captain** (fleet owner) | Their own agents | Grant via their fleet panel |
-| **Crew** (agents) | Nothing | No SSH capability |
+| **Operator** (infrastructure admin) | Any tenant | Grant via admin panel |
+| **User** (fleet owner) | Their own agents | Grant via their fleet panel |
+| **Agent** | Nothing | No SSH capability |
 
 ### Flow
 

@@ -69,7 +69,7 @@ User ──▶ Fleet Command ──┬──▶ Agent A ──▶ Site A
 Many users, each with isolated fleets. Users invisible to each other.
 
 ```
-[Spawn Infrastructure]
+[SaaS Infrastructure]
     │
     ├── User A's Fleet (isolated)
     ├── User B's Fleet (isolated)  
