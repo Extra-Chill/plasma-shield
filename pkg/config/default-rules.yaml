@@ -59,6 +59,46 @@ rules:
     enabled: true
 
   # ============================================
+  # CLOUD PROVIDER APIs (prevent self-provisioning)
+  # ============================================
+
+  - id: block-hetzner-api
+    domain: "api.hetzner.cloud"
+    action: block
+    description: "Block Hetzner API (prevent unauthorized VPS creation)"
+    enabled: true
+
+  - id: block-aws-api
+    domain: "*.amazonaws.com"
+    action: block
+    description: "Block AWS APIs"
+    enabled: true
+
+  - id: block-gcp-api
+    domain: "*.googleapis.com"
+    action: block
+    description: "Block Google Cloud APIs"
+    enabled: true
+
+  - id: block-digitalocean-api
+    domain: "api.digitalocean.com"
+    action: block
+    description: "Block DigitalOcean API"
+    enabled: true
+
+  - id: block-vultr-api
+    domain: "api.vultr.com"
+    action: block
+    description: "Block Vultr API"
+    enabled: true
+
+  - id: block-linode-api
+    domain: "api.linode.com"
+    action: block
+    description: "Block Linode API"
+    enabled: true
+
+  # ============================================
   # C2 / EXFILTRATION COMMON
   # ============================================
 
