@@ -1,60 +1,106 @@
 # Plasma Shield 🛡️
 
-Network security router for AI agent fleets. Inspect, filter, and control all agent traffic from a human-only control plane.
+Network security for AI agent fleets. Nested isolation with information hiding — agents can't see each other, can't see the shield, can't see they're part of a network.
 
-## What It Does
+## The Problem
 
-Plasma Shield wraps your AI agents in a network-level security boundary that **agents cannot see, access, or modify**. All traffic flows through the shield, where it can be inspected, filtered, and blocked based on rules you define.
+AI agents with shell access are powerful — and dangerous. They can:
+- Make mistakes that destroy data
+- Be tricked by prompt injection into harmful actions
+- Exfiltrate sensitive information
+- Probe and discover network topology
+
+Traditional solutions (firewalls, VPCs, service meshes) weren't designed for AI. They control **access** but not **awareness**. An agent behind a firewall still knows the firewall exists.
+
+## The Solution
+
+Plasma Shield provides **network-level security with information hiding**:
+
+1. **Invisible infrastructure** — Agents don't know they're behind a shield
+2. **Tenant isolation** — Users can't see other users' agents
+3. **Nested shields** — Shields within shields, each with independent rules
+4. **Visibility ≠ Access** — Operators can monitor without being able to access
+5. **Human-only control** — Agents cannot disable their own safety net
 
 ```
-╔═══════════════════════════════════════════════════════════════════╗
-║                    HUMAN CONTROL PLANE                            ║
-║                   (Agents cannot reach this)                      ║
-║                                                                   ║
-║         CLI ─────▶ Shield Router ◀────── Dashboard               ║
-║                          │                                        ║
-╚══════════════════════════╬════════════════════════════════════════╝
-                           │
-          ═══════════ PLASMA SHIELD ═══════════
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-          Agent 1      Agent 2      Agent N
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Network (Operator View)                         │
+│                  Operator can see, but NOT access                   │
+│                                                                     │
+│   ┌─────────────────────────┐     ┌─────────────────────────┐      │
+│   │    User A's Shield      │     │    User B's Shield      │      │
+│   │   ┌───────┐ ┌───────┐   │     │   ┌───────┐             │      │
+│   │   │Agent 1│ │Agent 2│   │     │   │Agent 1│             │      │
+│   │   └───────┘ └───────┘   │     │   └───────┘             │      │
+│   │                         │     │                         │      │
+│   └─────────────────────────┘     └─────────────────────────┘      │
+│                                                                     │
+│   ● Users don't know about each other                               │
+│   ● Agents don't know they're behind a shield                       │
+│   ● Operators can see topology but can't access servers             │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Why?
+## Use Cases
 
-AI agents with shell access can do a lot of damage — intentionally or not. Plasma Shield provides:
+### Simple (Most Users)
 
-1. **Network isolation** — Agents can only reach the internet through the shield
-2. **Command filtering** — Block destructive patterns (`rm -rf`, `curl | bash`, etc.)
-3. **Domain blocking** — Prevent access to dangerous or unauthorized sites
-4. **Audit logging** — See exactly what your agents are doing
-5. **Kill switch** — Instantly freeze any agent from the control plane
-6. **Human-only management** — Agents cannot disable their own safety net
+One agent, one site. The shield is invisible safety infrastructure.
+
+```
+User ──▶ Agent ──▶ WordPress Site
+              │
+        [Shield wraps agent, user doesn't know or care]
+```
+
+### Fleet (Power Users)
+
+Multiple agents, optional orchestration. User configures inter-agent permissions.
+
+```
+User ──▶ Fleet Command ──┬──▶ Agent A ──▶ Site A
+                         ├──▶ Agent B ──▶ Site B
+                         └──▶ Agent C ──▶ Site C
+```
+
+### Multi-Tenant (SaaS / Enterprise)
+
+Many users, each with isolated fleets. Users invisible to each other.
+
+```
+[Spawn Infrastructure]
+    │
+    ├── User A's Fleet (isolated)
+    ├── User B's Fleet (isolated)  
+    ├── User C's Fleet (isolated)
+    └── ... (thousands of users)
+```
 
 ## Threat Model
 
 Plasma Shield protects against:
 
-- **Honest mistakes** — Agent runs a destructive command by accident
-- **Prompt injection** — Malicious input tricks agent into harmful actions
-- **Exfiltration** — Agent tries to send sensitive data to unauthorized destinations
-- **Lateral movement** — Compromised agent tries to reach other systems
+| Threat | Protection |
+|--------|------------|
+| Honest mistakes | Domain/URL blocking, audit logging |
+| Prompt injection | Shield can't be disabled by the agent |
+| Data exfiltration | Block unauthorized destinations |
+| Lateral movement | Tenant isolation, inter-agent rules |
+| Network probing | Information hiding, no discovery endpoints |
 
 It does NOT protect against:
-
-- Physical access to agent hardware
+- Physical access to hardware
 - Compromise of the shield router itself
-- Vulnerabilities in the agent's local OS (use proper hardening too)
+- Local exec commands (use OS-level hardening)
 
 ## Components
 
 | Component | Description |
 |-----------|-------------|
-| `plasma-shield-router` | The shield router — forwards traffic, enforces rules |
-| `plasma-shield` | CLI for managing the shield from your terminal |
-| `dashboard` | Homeboy module for monitoring and control (optional) |
+| `plasma-shield-router` | Proxy service that inspects and filters traffic |
+| `plasma-shield` | CLI for human operators |
+| `lockdown.sh` | Script to configure agent iptables |
 
 ## Quick Start
 
@@ -62,20 +108,18 @@ It does NOT protect against:
 
 ```bash
 # On a dedicated VPS (NOT on any agent machine)
-curl -fsSL https://get.plasmashield.dev | bash
-
-# Or with Docker
-docker run -d -p 443:443 -p 8443:8443 ghcr.io/extra-chill/plasma-shield
+git clone https://github.com/Extra-Chill/plasma-shield
+cd plasma-shield
+make build
+./plasma-shield-router --config config.yaml
 ```
 
-### 2. Configure Agent Lockdown
-
-On each agent VPS, run the lockdown script:
+### 2. Lock Down Each Agent
 
 ```bash
-curl -fsSL https://get.plasmashield.dev/lockdown | bash -s -- \
-  --shield-ip <ROUTER_IP> \
-  --agent-token <TOKEN>
+# On the agent VPS
+curl -fsSL https://raw.githubusercontent.com/Extra-Chill/plasma-shield/main/provisioning/lockdown.sh | \
+  bash -s -- --shield-ip <ROUTER_IP>
 ```
 
 This configures iptables to force all traffic through the shield.
@@ -83,83 +127,91 @@ This configures iptables to force all traffic through the shield.
 ### 3. Manage via CLI
 
 ```bash
-# Install the CLI on your personal machine
-brew install extra-chill/tap/plasma-shield
+# Install CLI on your personal machine
+go install github.com/Extra-Chill/plasma-shield/cmd/plasma-shield@latest
 
-# Connect to your shield
-plasma-shield auth login
+# Configure connection
+plasma-shield config set api-url https://shield.example.com:9000
+plasma-shield config set api-key <your-key>
 
-# View agents
+# View status
+plasma-shield status
+
+# List agents
 plasma-shield agent list
 
 # Add a blocking rule
-plasma-shield rules add --pattern "rm -rf /" --action block
+plasma-shield rules add --domain "evil.com" --action block
 
-# Watch traffic in real-time
-plasma-shield logs --tail
+# Emergency lockdown
+plasma-shield agent mode <agent-id> lockdown
+```
 
-# Emergency stop an agent
-plasma-shield agent kill <agent-id>
+## Hierarchical Roles
+
+| Role | Sees | Can Access | Typical User |
+|------|------|------------|--------------|
+| **Commodore** | All tenants, full topology | Only opened shields | Infrastructure ops |
+| **Captain** | Their fleet only | Their agents | End user |
+| **Crew** | Their assignment only | Their tools | AI agent |
+
+## Operating Modes
+
+| Mode | Behavior |
+|------|----------|
+| **enforce** | Block matching requests (default) |
+| **audit** | Log everything, block nothing (testing) |
+| **lockdown** | Block ALL requests (emergency) |
+
+```bash
+# Set mode for specific agent
+plasma-shield agent mode <agent-id> audit
+
+# Set mode for entire fleet  
+plasma-shield fleet mode <fleet-id> lockdown
 ```
 
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
 
-### Network Flow
+Key principles:
+- **External enforcement** — Shield runs outside agent environment
+- **Nested isolation** — Shields within shields
+- **Information hiding** — Agents don't know about the network
+- **Fail-closed** — If shield is down, agents can't reach internet
 
+## Development
+
+```bash
+# Build everything
+make build
+
+# Run tests
+make test
+
+# Run the proxy locally
+make run-proxy
+
+# Run the CLI
+make run-cli
 ```
-Agent Process
-     │
-     ▼ (all outbound blocked except to shield)
-iptables REDIRECT
-     │
-     ▼
-Shield Router (inspect + filter)
-     │
-     ▼ (if allowed)
-Internet
-```
-
-### Management Flow
-
-```
-Human (you)
-     │
-     ▼ (WireGuard / SSH / Tailscale)
-Shield Management API
-     │
-     ▼
-Rule changes, kill switches, logs
-```
-
-Agents cannot reach the management API. It's on a separate network interface that only accepts connections from authorized human operators.
-
-## Default Rules
-
-Plasma Shield ships with sensible defaults:
-
-```yaml
-# Block access to common bad neighborhoods  
-- domain: "*.ru"
-  action: block
-  
-- domain: "pastebin.com"
-  action: block
-```
-
-Customize rules via CLI, API, or config file.
 
 ## Roadmap
 
 - [x] Project scaffold
-- [ ] Basic HTTP/HTTPS proxy
-- [ ] Rule engine with pattern matching
-- [ ] CLI for management
-- [ ] Agent lockdown scripts (iptables)
+- [x] Architecture documentation
+- [x] CLI implementation
+- [x] Rule engine with pattern matching
+- [x] Operating modes (enforce/audit/lockdown)
+- [x] Proxy handler tests
+- [x] API handler tests
+- [ ] HTTP/HTTPS proxy (core implementation)
 - [ ] WireGuard management interface
-- [ ] Dashboard UI
-- [ ] Multi-tenant support (for Spawn)
+- [ ] Agent lockdown scripts (iptables)
+- [ ] Dashboard UI (Homeboy module)
+- [ ] Multi-tenant support
+- [ ] Distributed shield mesh
 
 ## License
 

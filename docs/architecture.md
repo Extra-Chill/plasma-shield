@@ -4,31 +4,180 @@
 
 Plasma Shield is a network-level security boundary for AI agent fleets. It operates on the principle that **agents cannot be trusted to enforce their own safety limits**.
 
+The architecture is **nested** — shields within shields, like Gutenberg inner blocks. Each layer has independent rules, and trust does not cascade inward.
+
 ## Core Principles
 
 1. **External enforcement** — Security rules are enforced outside the agent's environment
-2. **Network isolation** — Agents cannot bypass the shield at the network level
-3. **Human-only control** — Management interfaces are inaccessible to agents
-4. **Defense in depth** — Multiple layers of protection
+2. **Visibility ≠ Access** — Operators can see network topology without being able to access servers
+3. **Nested isolation** — Shields can contain shields, each with independent rules
+4. **Information hiding** — Agents don't know about other tenants or that they're part of a network
+5. **Human-only control** — Management interfaces are inaccessible to agents
+
+## Network Topology
+
+Plasma Shield supports multiple deployment patterns, from simple single-agent setups to complex multi-tenant fleets.
+
+### Simple (Most Users)
+
+One user, one agent, one site. The shield is invisible infrastructure.
+
+```
+┌─────────────────────────────────────┐
+│            User's Shield            │
+│                                     │
+│   [Agent] ──▶ [WordPress Site]      │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+The user talks to their agent. The agent doesn't know it's behind a shield.
+
+### Intermediate (Multi-Site User)
+
+One user, multiple sites, each with an agent. No central orchestrator.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   User's Shield                     │
+│                                                     │
+│   [Agent A] ──▶ [Site A]                            │
+│                                      (isolated or   │
+│   [Agent B] ──▶ [Site B]              connected)    │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+The user can configure whether agents can communicate with each other.
+
+### Advanced (Fleet with Command)
+
+One user, hierarchical fleet with orchestration layer.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        User's Shield                         │
+│                                                              │
+│   [Fleet Command] ──┬──▶ [Agent A] ──▶ [Site A]             │
+│         ▲           │                                        │
+│         │           ├──▶ [Agent B] ──▶ [Site B]             │
+│       User          │                                        │
+│                     └──▶ [Agent C] ──▶ [Site C]             │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+User talks to Fleet Command. Fleet Command orchestrates the crew. The crew doesn't know about each other unless Fleet Command tells them.
+
+### Multi-Tenant (SaaS)
+
+Multiple users, each with their own isolated fleet. Users cannot see each other.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Spawn Network (Operator View)                   │
+│                  Operator can see, but NOT access                   │
+│                                                                     │
+│   ┌─────────────────────────┐     ┌─────────────────────────┐      │
+│   │    User A's Shield      │     │    User B's Shield      │      │
+│   │   ┌───────┐ ┌───────┐   │     │   ┌───────┐             │      │
+│   │   │Site 1 │ │Site 2 │   │     │   │Site 1 │             │      │
+│   │   └───────┘ └───────┘   │     │   └───────┘             │      │
+│   │     (user configures    │     │                         │      │
+│   │      inner isolation)   │     │                         │      │
+│   └─────────────────────────┘     └─────────────────────────┘      │
+│                                                                     │
+│   Users don't know about each other                                 │
+│   Users don't know they're part of Spawn                            │
+│   Agents don't know Plasma Shield exists                            │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Hierarchical Roles
+
+| Role | Visibility | Access | Responsibilities |
+|------|------------|--------|------------------|
+| **Commodore** | All tenants, all topology | None by default; must open specific shields | Infrastructure ops, security policy, tenant isolation |
+| **Captain** | Their fleet only | Their fleet (within their shield) | Configure inter-agent permissions, manage their agents |
+| **Crew** | Their assignment only | Their tools/APIs | Serve their Captain, unaware of fleet structure |
+
+**Key insight:** Visibility does not grant access. The Commodore can see that User A has 3 agents, but cannot access those agents unless User A's shield is explicitly opened for a specific session.
+
+## Nested Shields
+
+Shields can be nested to arbitrary depth:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Outer Shield (Spawn Infrastructure)                             │
+│  - Enforces tenant isolation                                     │
+│  - Operator can see topology                                     │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  Middle Shield (User's Fleet)                              │  │
+│  │  - User configures inter-agent rules                       │  │
+│  │  - User can grant Fleet Command orchestration access       │  │
+│  │                                                            │  │
+│  │  ┌─────────────────────┐  ┌─────────────────────┐         │  │
+│  │  │  Inner Shield (Opt) │  │  Inner Shield (Opt) │         │  │
+│  │  │  Site A             │  │  Site B             │         │  │
+│  │  │  - Extra isolation  │  │  - Extra isolation  │         │  │
+│  │  │  - Premium feature  │  │  - Premium feature  │         │  │
+│  │  └─────────────────────┘  └─────────────────────┘         │  │
+│  │                                                            │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Trust does not cascade inward.** Opening the outer shield does not grant access to inner shields. Each layer must be explicitly opened.
+
+## Information Hiding
+
+This is the critical security property that differentiates Plasma Shield from traditional network isolation.
+
+### What Agents Know
+
+- Their own identity (name, purpose)
+- Their Captain (the user who controls them)
+- Allowed APIs and tools (per their configuration)
+
+### What Agents Don't Know
+
+- Other agents exist (even in the same fleet, unless explicitly told)
+- Other users/tenants exist
+- They're behind a Plasma Shield
+- They're part of a larger network
+- The network topology
+
+### How It Works
+
+**Inter-agent communication is masked.** When Fleet Command sends a message to Sarai, Sarai sees it as coming from the Captain (Chubes), not from Fleet Command. Agents never receive traffic that reveals other agents exist.
+
+**Blocked requests appear as network failures.** When the shield blocks a request, the agent sees a timeout or connection refused — not a "Plasma Shield blocked this" error.
+
+**No discovery endpoints.** There is no API an agent can call to enumerate the network.
 
 ## Components
 
-### Shield Router (`proxy`)
+### Shield Router (`plasma-shield-router`)
 
-The central component. Runs on a dedicated VPS that agents cannot access.
+The central component. Runs on dedicated infrastructure that agents cannot access.
 
 Responsibilities:
 - Forward HTTP/HTTPS traffic from agents to the internet
 - Inspect requests against the rule engine
-- Block or allow based on rules
+- Enforce tenant isolation
+- Mask inter-agent communication
 - Log all traffic for audit
 - Expose management API (on separate network interface)
 
 ### Shield CLI (`plasma-shield`)
 
-Human-only command-line interface. Installed on the operator's personal machine.
+Human-only command-line interface. Installed on the operator's machine.
 
-Communicates with the shield router over a secure channel (WireGuard, SSH tunnel, or Tailscale) that agents cannot reach.
+Communicates with the shield router over a secure channel that agents cannot reach.
 
 ### Rule Engine
 
@@ -37,192 +186,148 @@ Pattern-matching engine that evaluates:
 - URL patterns (via HTTP inspection)
 - Request headers and bodies (optional deep inspection)
 
-Rules are managed externally and pushed to the router. Agents cannot view or modify rules.
-
-## Network Architecture
-
-```
-                    HUMAN CONTROL PLANE
-                    (Agents cannot reach)
-    ┌────────────────────────────────────────────┐
-    │                                            │
-    │   [Your Machine]                           │
-    │       │                                    │
-    │       │ WireGuard (10.100.0.0/24)         │
-    │       │                                    │
-    │       ▼                                    │
-    │   [Shield Router]                          │
-    │   ┌────────────────────────────────────┐   │
-    │   │ wg0: 10.100.0.1                    │   │
-    │   │   └─ :22 SSH                       │   │
-    │   │   └─ :9000 Management API          │   │
-    │   │                                    │   │
-    │   │ eth0: PUBLIC_IP                    │   │
-    │   │   └─ :443 Agent Proxy              │   │
-    │   │   └─ :8443 Exec Inspection         │   │
-    │   └────────────────────────────────────┘   │
-    │                                            │
-    └────────────────────────────────────────────┘
-                         │
-        ═══════════ PLASMA SHIELD ═══════════
-                         │
-                    AGENT PLANE
-                    (Isolated network)
-    ┌────────────────────────────────────────────┐
-    │                                            │
-    │   [Agent VPS 1]        [Agent VPS 2]      │
-    │   ┌──────────────┐    ┌──────────────┐    │
-    │   │ iptables:    │    │ iptables:    │    │
-    │   │ OUTPUT DROP  │    │ OUTPUT DROP  │    │
-    │   │ except →     │    │ except →     │    │
-    │   │ SHIELD_IP    │    │ SHIELD_IP    │    │
-    │   └──────────────┘    └──────────────┘    │
-    │                                            │
-    └────────────────────────────────────────────┘
-```
-
-## Traffic Flow
-
-### Outbound Web Request
-
-```
-1. Agent runs: curl https://api.example.com/data
-
-2. Agent's iptables sees outbound traffic
-   → Only SHIELD_IP is allowed
-   → Request goes to shield proxy
-
-3. Shield proxy receives CONNECT request
-   → Extracts domain: api.example.com
-   → Checks against rules
-   → If blocked: return 403
-   → If allowed: forward to destination
-
-4. Response flows back through proxy to agent
-```
-
-### Exec Commands
-
-Exec commands run locally on the agent machine, not over the network. The shield cannot directly inspect them. Exec safety is enforced through:
-
-1. **OS-level permissions** — Agent runs as limited user (no root, restricted paths)
-2. **Container isolation** — Run OpenClaw in Docker with limited capabilities
-3. **seccomp/AppArmor** — Kernel-level syscall restrictions (advanced)
-
-The shield focuses on what it CAN control: network traffic. For exec, use defense in depth at the OS layer.
-
-## Security Model
-
-### What Agents CAN Do
-
-- Make outbound HTTP/HTTPS requests (via proxy)
-- Execute local commands (subject to OS permissions)
-- Read/write files (subject to OS permissions)
-
-### What Agents CANNOT Do
-
-- Reach the internet without going through the shield
-- Access the shield's management interface
-- View or modify blocking rules
-- Disable the iptables firewall (requires root, agent runs as limited user)
-- Access other agents' traffic
-
-### Trust Boundaries
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ TRUSTED                                                     │
-│                                                             │
-│   • Shield router                                           │
-│   • Your personal machine                                   │
-│   • WireGuard keys                                          │
-│   • Rule definitions                                        │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ UNTRUSTED                                                   │
-│                                                             │
-│   • AI agents                                               │
-│   • Agent VPS environments                                  │
-│   • User prompts (potential injection)                      │
-│   • External APIs the agent calls                           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+Rules exist at each shield level:
+- Infrastructure rules (Commodore-defined, all tenants)
+- Fleet rules (Captain-defined, their agents)
+- Instance rules (per-agent overrides)
 
 ## Operating Modes
-
-The shield supports multiple operating modes, controlled via CLI or management API.
 
 ### Enforce Mode (default)
 
 Normal operation. Requests matching block rules are rejected.
 
-```
-Agent → Shield → Rule Match? → Block (403) or Forward
-```
-
 ### Audit Mode
 
-Testing/debugging mode. All requests are logged but never blocked. The agent cannot distinguish audit mode from enforce mode — blocked requests still appear to fail from the agent's perspective (optional: can configure to pass through).
-
-```
-Agent → Shield → Rule Match? → Log + Forward (always)
-```
-
-Use cases:
+Testing mode. All requests are logged but never blocked. Useful for:
 - Initial deployment testing
 - Debugging false positives
 - Monitoring before enforcement
 
 ### Lockdown Mode
 
-Emergency mode. ALL outbound requests are blocked. Use when an agent is compromised.
-
-```
-Agent → Shield → Block Everything (503)
-```
-
-### Per-Agent Overrides
-
-Each agent can have its own mode override:
+Emergency mode. ALL outbound requests are blocked.
 
 ```bash
-plasma-shield agent mode <agent-id> audit    # This agent in audit mode
-plasma-shield agent mode <agent-id> enforce  # Back to normal
-plasma-shield agent mode <agent-id> lockdown # Emergency stop
+plasma-shield agent mode <agent-id> lockdown  # Freeze this agent
+plasma-shield fleet mode <fleet-id> lockdown  # Freeze entire fleet
 ```
 
-Global mode affects all agents without explicit overrides.
+## Access Control
 
-## Emergency Access
+### Opening a Shield
 
-**Never store bypass keys on agent VPS.** If you need emergency access:
+To access a server protected by a shield, the Commodore must explicitly open it:
 
-1. **Hetzner Console** — Out-of-band serial console via web UI. No network involved.
-2. **Shield passthrough** — Temporarily set agent to audit mode from shield CLI.
-3. **WireGuard direct** — If shield router has WireGuard to agent (Commodore-only).
+```bash
+# Open User A's fleet shield for 1 hour
+plasma-shield access grant --fleet user-a --duration 1h
 
-The agent must never have a mechanism to bypass its own restrictions.
+# Open a specific agent within that fleet
+plasma-shield access grant --agent user-a/site-1 --duration 30m
+```
+
+Access grants are:
+- Time-limited (required)
+- Logged (always)
+- Revocable (immediately)
+- Scoped (to specific shield level)
+
+### Emergency Access
+
+If the shield router is unreachable:
+1. **Cloud Console** — Out-of-band serial console via hosting provider
+2. **No bypass keys on agent** — The agent must never have a mechanism to bypass its own restrictions
+
+## Traffic Flow
+
+### Outbound Web Request
+
+```
+1. Agent makes request to api.example.com
+
+2. Agent's iptables forces traffic to shield router
+   (only SHIELD_IP is reachable)
+
+3. Shield router receives request
+   → Checks tenant isolation (is this allowed?)
+   → Checks domain/URL rules
+   → Checks fleet-level rules
+   → Checks instance-level rules
+   → If any block: return failure
+   → If all pass: forward to destination
+
+4. Response flows back through shield to agent
+```
+
+### Inter-Agent Communication (masked)
+
+```
+1. Fleet Command sends task to Sarai via Agent Ping
+
+2. Shield intercepts the message
+   → Source: Fleet Command
+   → Destination: Sarai
+
+3. Shield rewrites the message
+   → Source: Captain (Chubes)
+   → Destination: Sarai
+
+4. Sarai receives the message
+   → Sees it as coming from her Captain
+   → Has no knowledge of Fleet Command
+```
+
+## Exec Commands
+
+Exec commands run locally on the agent machine, not over the network. The shield cannot directly inspect them.
+
+Exec safety requires OS-level controls:
+- **Limited user** — Agent runs as non-root
+- **Docker isolation** — Container with `--cap-drop=ALL`
+- **seccomp/AppArmor** — Kernel-level syscall restrictions
+- **Restricted PATH** — Limited available commands
+
+The shield focuses on network traffic. Exec is defense-in-depth at the OS layer.
 
 ## Failure Modes
 
 ### Shield Router Down
 
-If the shield router is unreachable:
 - Agents cannot make ANY outbound requests
 - Fail-closed by design
-- Alerts sent to operator (if configured)
+- Alerts sent to operator
 
 ### Agent Compromise
 
-If an agent is fully compromised:
 - Attacker is still constrained by iptables
 - Cannot reach arbitrary internet destinations
 - Cannot disable firewall (no root)
 - All traffic logged for forensics
+- Shield can be set to lockdown mode
 
-### Management Key Compromise
+### Shield Compromise
 
-If WireGuard key is compromised:
-- Attacker could modify rules
-- Mitigation: Rotate keys, use hardware tokens, audit logs
+If the shield router itself is compromised:
+- All traffic potentially exposed
+- Mitigation: Defense in depth, audit logs, rotation
+- Shield router should be minimal attack surface (no unnecessary services)
+
+## Scaling
+
+### Single Shield Router
+
+For small deployments (< 100 agents):
+- One shield router handles all traffic
+- Simpler management
+- Single point of monitoring
+
+### Distributed Shield Mesh
+
+For large deployments (enterprise scale):
+- Multiple shield routers in mesh
+- Consistent policy distribution
+- Regional routing for latency
+- No single point of failure
+
+Architecture for mesh is TBD based on real-world scaling needs.
