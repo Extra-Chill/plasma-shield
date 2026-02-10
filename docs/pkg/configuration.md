@@ -141,4 +141,4 @@ For exec hardening, use OS-level controls:
 4. Use AppArmor/SELinux for mandatory access control
 5. Restrict PATH to safe commands only
 
-See `docs/exec-hardening.md` for detailed guidance.
+See the "Exec Commands" section in `docs/architecture.md` for detailed guidance.

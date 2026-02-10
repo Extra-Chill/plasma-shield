@@ -8,10 +8,12 @@ The web package provides an embedded web UI using Go's `embed` directive. Static
 
 ## Structure
 
+Files are located at `internal/web/` in the repository:
+
 ```
-internal/web/
-├── embed.go       # Go embed directive and handler
-└── static/        # Static web assets (HTML, CSS, JS)
+embed.go           # Go embed directive and handler
+static/            # Static web assets
+└── index.html     # Single-file Alpine.js dashboard
 ```
 
 ## Code
@@ -131,26 +133,18 @@ Place files in `internal/web/static/`:
 
 ```
 internal/web/static/
-├── index.html
-├── css/
-│   └── style.css
-├── js/
-│   └── app.js
-└── assets/
-    └── logo.png
+└── index.html    # Currently a single-file Alpine.js app
 ```
 
 All files are automatically included in the build.
 
 ### Accessing Files
 
-Files are served relative to the `static/` directory:
+Files are served relative to the embedded `static/` directory:
 
 | File Location | URL Path |
 |---------------|----------|
-| `static/index.html` | `/` or `/index.html` |
-| `static/css/style.css` | `/css/style.css` |
-| `static/js/app.js` | `/js/app.js` |
+| `internal/web/static/index.html` | `/` or `/index.html` |
 
 ## Benefits
 
