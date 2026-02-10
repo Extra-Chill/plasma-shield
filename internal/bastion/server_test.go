@@ -44,9 +44,12 @@ func TestBastionDirectTCPIPProxy(t *testing.T) {
 	tempDir := t.TempDir()
 	logStore := NewLogStore(10)
 	logger := NewLogger(logStore)
+	grantStore := NewGrantStore("")
 	server, err := NewServer(Config{
 		Addr:        "127.0.0.1:0",
 		HostKeyPath: filepath.Join(tempDir, "bastion_host_key"),
+		CAKeyPath:   filepath.Join(tempDir, "bastion_ca_key"),
+		GrantStore:  grantStore,
 		Logger:      logger,
 	})
 	if err != nil {
@@ -66,9 +69,27 @@ func TestBastionDirectTCPIPProxy(t *testing.T) {
 		t.Fatalf("signer: %v", err)
 	}
 
+	host, _, err := net.SplitHostPort(targetAddr)
+	if err != nil {
+		t.Fatalf("split target addr: %v", err)
+	}
+	grant := grantStore.Add("tester", host, "test", 30*time.Minute)
+	ca, err := NewCertificateAuthority(filepath.Join(tempDir, "bastion_ca_key"))
+	if err != nil {
+		t.Fatalf("load CA: %v", err)
+	}
+	cert, err := ca.IssueUserCertificate(signer.PublicKey(), grant)
+	if err != nil {
+		t.Fatalf("issue cert: %v", err)
+	}
+	certSigner, err := ssh.NewCertSigner(cert, signer)
+	if err != nil {
+		t.Fatalf("cert signer: %v", err)
+	}
+
 	client, err := ssh.Dial("tcp", server.Addr(), &ssh.ClientConfig{
 		User:            "tester",
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(certSigner)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         5 * time.Second,
 	})

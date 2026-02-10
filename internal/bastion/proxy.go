@@ -34,6 +34,12 @@ func (s *Server) handleDirectTCPIP(sshConn *ssh.ServerConn, channel ssh.NewChann
 	defer conn.Close()
 	go ssh.DiscardRequests(reqs)
 
+	grant := s.grants.ValidateAccess(sshConn.User(), payload.DestAddr)
+	if grant == nil {
+		channel.Reject(ssh.Prohibited, "no valid grant for target")
+		return
+	}
+
 	address := net.JoinHostPort(payload.DestAddr, strconv.Itoa(int(payload.DestPort)))
 	targetConn, err := net.Dial("tcp", address)
 	if err != nil {
@@ -44,12 +50,7 @@ func (s *Server) handleDirectTCPIP(sshConn *ssh.ServerConn, channel ssh.NewChann
 
 	sessionID := fmt.Sprintf("%x-%d", sshConn.SessionID(), time.Now().UnixNano())
 	principal := sshConn.User()
-	grantID := ""
-	if sshConn.Permissions != nil {
-		if id, ok := sshConn.Permissions.Extensions["grant_id"]; ok {
-			grantID = id
-		}
-	}
+	grantID := grant.ID
 
 	s.logger.LogConnect(sessionID, grantID, principal, address)
 	defer s.logger.LogDisconnect(sessionID, grantID, principal, address)

@@ -22,6 +22,8 @@ type Config struct {
 	Addr               string
 	HostKeyPath        string
 	AuthorizedKeysPath string
+	CAKeyPath          string
+	GrantStore         *GrantStore
 	Logger             *Logger
 }
 
@@ -33,6 +35,8 @@ type Server struct {
 	mu             sync.Mutex
 	authorizedKeys map[string]struct{}
 	logger         *Logger
+	ca             *CertificateAuthority
+	grants         *GrantStore
 }
 
 func NewServer(config Config) (*Server, error) {
@@ -55,11 +59,27 @@ func NewServer(config Config) (*Server, error) {
 	if config.Logger == nil {
 		return nil, errors.New("bastion logger required")
 	}
+	if config.GrantStore == nil {
+		return nil, errors.New("bastion grant store required")
+	}
+
+	ca, err := NewCertificateAuthority(config.CAKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load CA: %w", err)
+	}
 
 	sshConfig := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if cert, ok := key.(*ssh.Certificate); ok {
+				if err := ca.ValidateUserCertificate(cert, conn.User()); err != nil {
+					return nil, err
+				}
+				return &ssh.Permissions{Extensions: map[string]string{
+					"principal": conn.User(),
+				}}, nil
+			}
 			if len(authorizedKeys) == 0 {
-				return nil, nil
+				return nil, errors.New("no authorized keys configured")
 			}
 			if _, ok := authorizedKeys[string(key.Marshal())]; ok {
 				return nil, nil
@@ -74,6 +94,8 @@ func NewServer(config Config) (*Server, error) {
 		sshConfig:      sshConfig,
 		authorizedKeys: authorizedKeys,
 		logger:         config.Logger,
+		ca:             ca,
+		grants:         config.GrantStore,
 	}, nil
 }
 
