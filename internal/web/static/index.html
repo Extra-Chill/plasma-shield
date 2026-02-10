@@ -215,6 +215,43 @@
         .refresh-btn:hover {
             border-color: var(--accent);
         }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .input, .select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+
+        .btn {
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            color: #fff;
+            padding: 0.6rem 0.9rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            filter: brightness(1.05);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            border-color: var(--danger);
+        }
         
         .loading {
             opacity: 0.5;
@@ -318,6 +355,7 @@
                 <button class="tab" :class="{ active: tab === 'agents' }" @click="tab = 'agents'">Agents</button>
                 <button class="tab" :class="{ active: tab === 'rules' }" @click="tab = 'rules'">Rules</button>
                 <button class="tab" :class="{ active: tab === 'fleet' }" @click="tab = 'fleet'">Fleet</button>
+                <button class="tab" :class="{ active: tab === 'bastion' }" @click="tab = 'bastion'">Bastion</button>
             </div>
             
             <!-- Logs Tab -->
@@ -446,6 +484,90 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Bastion Tab -->
+            <div x-show="tab === 'bastion'">
+                <div class="card" style="margin-bottom: 1.5rem;">
+                    <h2>Access Grants</h2>
+                    <form @submit.prevent="createGrant()">
+                        <div class="form-row">
+                            <input class="input" type="text" placeholder="Target (agent id or pattern)" x-model="grantForm.target" required>
+                            <select class="select" x-model="grantForm.duration">
+                                <template x-for="option in grantDurations" :key="option.value">
+                                    <option :value="option.value" x-text="option.label"></option>
+                                </template>
+                            </select>
+                            <button class="btn" type="submit">Create Grant</button>
+                        </div>
+                    </form>
+
+                    <template x-if="grants.length === 0">
+                        <div class="empty">No active grants</div>
+                    </template>
+                    <table x-show="grants.length > 0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Principal</th>
+                                <th>Target</th>
+                                <th>Expires</th>
+                                <th>Time Remaining</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="grant in grants" :key="grant.id">
+                                <tr>
+                                    <td x-text="grant.id"></td>
+                                    <td x-text="grant.principal || '*'" ></td>
+                                    <td x-text="grant.target" ></td>
+                                    <td x-text="formatDateTime(grant.expires_at)"></td>
+                                    <td x-text="timeRemaining(grant.expires_at)"></td>
+                                    <td>
+                                        <button class="btn btn-danger" @click="revokeGrant(grant.id)">Revoke</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2>Session History</h2>
+                    <div class="form-row" style="margin-bottom: 1rem;">
+                        <input class="input" type="text" placeholder="Filter by target" x-model="sessionsFilter.target">
+                        <input class="input" type="text" placeholder="Filter by principal" x-model="sessionsFilter.principal">
+                    </div>
+
+                    <template x-if="filteredSessions().length === 0">
+                        <div class="empty">No bastion sessions found</div>
+                    </template>
+                    <table x-show="filteredSessions().length > 0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event</th>
+                                <th>Principal</th>
+                                <th>Target</th>
+                                <th>Grant</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="session in filteredSessions()" :key="session.session_id + session.timestamp">
+                                <tr>
+                                    <td x-text="formatTime(session.timestamp)"></td>
+                                    <td x-text="session.event"></td>
+                                    <td x-text="session.principal || '-'" ></td>
+                                    <td x-text="session.target || '-'" ></td>
+                                    <td x-text="session.grant_id || '-'" ></td>
+                                    <td x-text="sessionDuration(session)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -459,6 +581,26 @@
                 agentModes: {},
                 logs: [],
                 rules: [],
+                grants: [],
+                sessions: [],
+                sessionDurations: {},
+                grantForm: {
+                    target: '',
+                    duration: '30m'
+                },
+                grantDurations: [
+                    { value: '15m', label: '15 minutes' },
+                    { value: '30m', label: '30 minutes' },
+                    { value: '1h', label: '1 hour' },
+                    { value: '4h', label: '4 hours' },
+                    { value: '8h', label: '8 hours' },
+                    { value: '24h', label: '24 hours' }
+                ],
+                sessionsFilter: {
+                    target: '',
+                    principal: ''
+                },
+                now: Date.now(),
                 stats: { allowed: 0, blocked: 0 },
                 tab: 'logs',
                 loading: false,
@@ -468,6 +610,7 @@
                     await this.refresh();
                     // Auto-refresh every 10 seconds
                     setInterval(() => this.refresh(), 10000);
+                    setInterval(() => { this.now = Date.now(); }, 1000);
                 },
                 
                 async refresh() {
@@ -504,6 +647,17 @@
                         const fleetData = await fleetRes.json();
                         this.fleetMode = fleetData.mode || 'isolated';
                         this.fleetAgents = fleetData.agents || [];
+
+                        // Bastion grants
+                        const grantsRes = await fetch('/grants?active=true');
+                        const grantsData = await grantsRes.json();
+                        this.grants = grantsData.grants || [];
+
+                        // Bastion sessions
+                        const sessionsRes = await fetch('/bastion/sessions?limit=200');
+                        const sessionsData = await sessionsRes.json();
+                        this.sessions = sessionsData.sessions || [];
+                        this.sessionDurations = this.buildSessionDurations(this.sessions);
                         
                     } catch (e) {
                         this.error = 'Failed to connect to shield router: ' + e.message;
@@ -563,11 +717,116 @@
                         this.error = 'Failed to clear agent mode: ' + e.message;
                     }
                 },
-                
+
+                async createGrant() {
+                    if (!this.grantForm.target) return;
+                    try {
+                        const res = await fetch('/grants', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                target: this.grantForm.target,
+                                duration: this.grantForm.duration
+                            })
+                        });
+                        if (!res.ok) {
+                            const errorData = await res.json();
+                            throw new Error(errorData.error || 'Failed to create grant');
+                        }
+                        this.grantForm.target = '';
+                        await this.refresh();
+                    } catch (e) {
+                        this.error = 'Failed to create grant: ' + e.message;
+                    }
+                },
+
+                async revokeGrant(id) {
+                    try {
+                        const res = await fetch(`/grants/${id}`, { method: 'DELETE' });
+                        if (!res.ok) {
+                            const errorData = await res.json();
+                            throw new Error(errorData.error || 'Failed to revoke grant');
+                        }
+                        await this.refresh();
+                    } catch (e) {
+                        this.error = 'Failed to revoke grant: ' + e.message;
+                    }
+                },
+
+                buildSessionDurations(sessions) {
+                    const starts = {};
+                    const durations = {};
+                    sessions.forEach((event) => {
+                        if (event.event === 'connect') {
+                            starts[event.session_id] = new Date(event.timestamp).getTime();
+                        }
+                        if (event.event === 'disconnect') {
+                            const start = starts[event.session_id];
+                            if (start) {
+                                durations[event.session_id] = new Date(event.timestamp).getTime() - start;
+                            }
+                        }
+                    });
+                    return durations;
+                },
+
+                filteredSessions() {
+                    const targetFilter = this.normalize(this.sessionsFilter.target);
+                    const principalFilter = this.normalize(this.sessionsFilter.principal);
+                    return this.sessions.filter((session) => {
+                        if (targetFilter && !this.normalize(session.target).includes(targetFilter)) {
+                            return false;
+                        }
+                        if (principalFilter && !this.normalize(session.principal).includes(principalFilter)) {
+                            return false;
+                        }
+                        return true;
+                    });
+                },
+
+                sessionDuration(session) {
+                    if (session.event !== 'disconnect') return '-';
+                    const duration = this.sessionDurations[session.session_id];
+                    if (!duration) return '-';
+                    return this.formatDuration(duration);
+                },
+
                 formatTime(ts) {
                     if (!ts) return '-';
                     const d = new Date(ts);
                     return d.toLocaleTimeString();
+                },
+
+                formatDateTime(ts) {
+                    if (!ts) return '-';
+                    const d = new Date(ts);
+                    return d.toLocaleString();
+                },
+
+                formatDuration(ms) {
+                    if (!ms && ms !== 0) return '-';
+                    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
+                    if (hours > 0) {
+                        return `${hours}h ${minutes}m ${seconds}s`;
+                    }
+                    if (minutes > 0) {
+                        return `${minutes}m ${seconds}s`;
+                    }
+                    return `${seconds}s`;
+                },
+
+                timeRemaining(expiresAt) {
+                    if (!expiresAt) return '-';
+                    const remaining = new Date(expiresAt).getTime() - this.now;
+                    if (remaining <= 0) return 'expired';
+                    return this.formatDuration(remaining);
+                },
+
+                normalize(value) {
+                    return (value || '').toString().toLowerCase();
                 }
             };
         }
