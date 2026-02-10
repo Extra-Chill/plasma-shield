@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plasma Shield</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --accent: #3b82f6;
+            --success: #22c55e;
+            --warning: #eab308;
+            --danger: #ef4444;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .shield-icon {
+            font-size: 1.8rem;
+        }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status-enforce { background: var(--success); color: #000; }
+        .status-audit { background: var(--warning); color: #000; }
+        .status-lockdown { background: var(--danger); color: #fff; }
+        .status-offline { background: var(--border); color: var(--text-dim); }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+        
+        .card h2 {
+            font-size: 1rem;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .mode-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .mode-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.375rem;
+            background: var(--bg);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+        }
+        
+        .mode-btn:hover {
+            border-color: var(--accent);
+        }
+        
+        .mode-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        
+        .mode-btn.enforce.active { background: var(--success); border-color: var(--success); color: #000; }
+        .mode-btn.audit.active { background: var(--warning); border-color: var(--warning); color: #000; }
+        .mode-btn.lockdown.active { background: var(--danger); border-color: var(--danger); }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            color: var(--text-dim);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        
+        tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        
+        .action-allow { color: var(--success); }
+        .action-block { color: var(--danger); }
+        .action-audit { color: var(--warning); }
+        
+        .agent-mode-select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.875rem;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+        
+        .tab:hover {
+            color: var(--text);
+        }
+        
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        
+        .stats {
+            display: flex;
+            gap: 2rem;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+        
+        .refresh-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        
+        .refresh-btn:hover {
+            border-color: var(--accent);
+        }
+        
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1rem;
+        }
+        
+        .empty {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-dim);
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .grid { grid-template-columns: 1fr; }
+            .stats { flex-wrap: wrap; gap: 1rem; }
+            .mode-buttons { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container" x-data="dashboard()" x-init="init()">
+        <!-- Header -->
+        <header>
+            <h1>
+                <span class="shield-icon">🛡️</span>
+                Plasma Shield
+            </h1>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <span x-show="health === 'OK'" class="status-badge" :class="'status-' + globalMode" x-text="globalMode.toUpperCase()"></span>
+                <span x-show="health !== 'OK'" class="status-badge status-offline">OFFLINE</span>
+                <button class="refresh-btn" @click="refresh()" :class="{ loading }">↻ Refresh</button>
+            </div>
+        </header>
+        
+        <!-- Error -->
+        <div x-show="error" class="error" x-text="error"></div>
+        
+        <!-- Stats & Mode Control -->
+        <div class="grid">
+            <div class="card">
+                <h2>Global Mode</h2>
+                <div class="mode-buttons">
+                    <button class="mode-btn enforce" :class="{ active: globalMode === 'enforce' }" @click="setMode('enforce')">
+                        ✓ Enforce
+                    </button>
+                    <button class="mode-btn audit" :class="{ active: globalMode === 'audit' }" @click="setMode('audit')">
+                        👁 Audit
+                    </button>
+                    <button class="mode-btn lockdown" :class="{ active: globalMode === 'lockdown' }" @click="setMode('lockdown')">
+                        🔒 Lockdown
+                    </button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Traffic Stats</h2>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value action-allow" x-text="stats.allowed"></div>
+                        <div class="stat-label">Allowed</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value action-block" x-text="stats.blocked"></div>
+                        <div class="stat-label">Blocked</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" x-text="Object.keys(agentModes).length"></div>
+                        <div class="stat-label">Agent Overrides</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="card">
+            <div class="tabs">
+                <button class="tab" :class="{ active: tab === 'logs' }" @click="tab = 'logs'">Traffic Logs</button>
+                <button class="tab" :class="{ active: tab === 'agents' }" @click="tab = 'agents'">Agents</button>
+                <button class="tab" :class="{ active: tab === 'rules' }" @click="tab = 'rules'">Rules</button>
+            </div>
+            
+            <!-- Logs Tab -->
+            <div x-show="tab === 'logs'">
+                <template x-if="logs.length === 0">
+                    <div class="empty">No traffic logs yet</div>
+                </template>
+                <table x-show="logs.length > 0">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Domain</th>
+                            <th>Action</th>
+                            <th>Agent</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="log in logs" :key="log.timestamp">
+                            <tr>
+                                <td x-text="formatTime(log.timestamp)"></td>
+                                <td x-text="log.domain"></td>
+                                <td :class="'action-' + log.action" x-text="log.action"></td>
+                                <td x-text="log.agent_token || '-'"></td>
+                                <td x-text="log.reason || '-'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Agents Tab -->
+            <div x-show="tab === 'agents'">
+                <template x-if="Object.keys(agentModes).length === 0">
+                    <div class="empty">No agent-specific overrides. All agents using global mode.</div>
+                </template>
+                <table x-show="Object.keys(agentModes).length > 0">
+                    <thead>
+                        <tr>
+                            <th>Agent ID</th>
+                            <th>Mode Override</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="[agent, mode] in Object.entries(agentModes)" :key="agent">
+                            <tr>
+                                <td x-text="agent"></td>
+                                <td>
+                                    <select class="agent-mode-select" :value="mode" @change="setAgentMode(agent, $event.target.value)">
+                                        <option value="enforce">Enforce</option>
+                                        <option value="audit">Audit</option>
+                                        <option value="lockdown">Lockdown</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="refresh-btn" @click="clearAgentMode(agent)">Clear</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Rules Tab -->
+            <div x-show="tab === 'rules'">
+                <template x-if="rules.length === 0">
+                    <div class="empty">No blocking rules configured</div>
+                </template>
+                <table x-show="rules.length > 0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Pattern</th>
+                            <th>Action</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="rule in rules" :key="rule.id">
+                            <tr>
+                                <td x-text="rule.id"></td>
+                                <td x-text="rule.domain || rule.pattern"></td>
+                                <td :class="'action-' + rule.action" x-text="rule.action"></td>
+                                <td x-text="rule.description || '-'"></td>
+                                <td x-text="rule.enabled ? '✓ Enabled' : '✗ Disabled'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function dashboard() {
+            return {
+                health: 'unknown',
+                globalMode: 'unknown',
+                agentModes: {},
+                logs: [],
+                rules: [],
+                stats: { allowed: 0, blocked: 0 },
+                tab: 'logs',
+                loading: false,
+                error: null,
+                
+                async init() {
+                    await this.refresh();
+                    // Auto-refresh every 10 seconds
+                    setInterval(() => this.refresh(), 10000);
+                },
+                
+                async refresh() {
+                    this.loading = true;
+                    this.error = null;
+                    
+                    try {
+                        // Health check
+                        const healthRes = await fetch('/health');
+                        this.health = healthRes.ok ? 'OK' : 'ERROR';
+                        
+                        // Mode
+                        const modeRes = await fetch('/mode');
+                        const modeData = await modeRes.json();
+                        this.globalMode = modeData.global_mode || 'unknown';
+                        this.agentModes = modeData.agent_modes || {};
+                        
+                        // Rules
+                        const rulesRes = await fetch('/rules');
+                        const rulesData = await rulesRes.json();
+                        this.rules = rulesData.rules || [];
+                        
+                        // Logs (recent 50)
+                        const logsRes = await fetch('/logs?limit=50');
+                        const logsData = await logsRes.json();
+                        this.logs = logsData || [];
+                        
+                        // Calculate stats from logs
+                        this.stats.allowed = this.logs.filter(l => l.action === 'allow').length;
+                        this.stats.blocked = this.logs.filter(l => l.action === 'block').length;
+                        
+                    } catch (e) {
+                        this.error = 'Failed to connect to shield router: ' + e.message;
+                        this.health = 'ERROR';
+                    }
+                    
+                    this.loading = false;
+                },
+                
+                async setMode(mode) {
+                    try {
+                        await fetch('/mode', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode })
+                        });
+                        this.globalMode = mode;
+                    } catch (e) {
+                        this.error = 'Failed to set mode: ' + e.message;
+                    }
+                },
+                
+                async setAgentMode(agent, mode) {
+                    try {
+                        await fetch(`/agent/${agent}/mode`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode })
+                        });
+                        this.agentModes[agent] = mode;
+                    } catch (e) {
+                        this.error = 'Failed to set agent mode: ' + e.message;
+                    }
+                },
+                
+                async clearAgentMode(agent) {
+                    try {
+                        await fetch(`/agent/${agent}/mode`, { method: 'DELETE' });
+                        delete this.agentModes[agent];
+                        this.agentModes = { ...this.agentModes }; // Trigger reactivity
+                    } catch (e) {
+                        this.error = 'Failed to clear agent mode: ' + e.message;
+                    }
+                },
+                
+                formatTime(ts) {
+                    if (!ts) return '-';
+                    const d = new Date(ts);
+                    return d.toLocaleTimeString();
+                }
+            };
+        }
+    </script>
+</body>
+</html>

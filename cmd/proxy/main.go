@@ -13,27 +13,69 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/Extra-Chill/plasma-shield/internal/mode"
 	"github.com/Extra-Chill/plasma-shield/internal/proxy"
 	"github.com/Extra-Chill/plasma-shield/internal/rules"
+	"github.com/Extra-Chill/plasma-shield/internal/web"
 )
 
 var version = "0.1.0"
 
+// LogStore stores recent traffic logs in memory
+type LogStore struct {
+	mu      sync.RWMutex
+	entries []proxy.LogEntry
+	maxSize int
+}
+
+func NewLogStore(maxSize int) *LogStore {
+	return &LogStore{
+		entries: make([]proxy.LogEntry, 0),
+		maxSize: maxSize,
+	}
+}
+
+func (s *LogStore) Add(entry proxy.LogEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries = append(s.entries, entry)
+	if len(s.entries) > s.maxSize {
+		s.entries = s.entries[len(s.entries)-s.maxSize:]
+	}
+}
+
+func (s *LogStore) Get(limit int) []proxy.LogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 || limit > len(s.entries) {
+		limit = len(s.entries)
+	}
+	// Return most recent first
+	result := make([]proxy.LogEntry, limit)
+	for i := 0; i < limit; i++ {
+		result[i] = s.entries[len(s.entries)-1-i]
+	}
+	return result
+}
+
 func main() {
 	// Parse command line flags
 	proxyAddr := flag.String("proxy-addr", ":8080", "Address for the proxy server")
-	apiAddr := flag.String("api-addr", ":8081", "Address for the management API")
+	apiAddr := flag.String("api-addr", ":9000", "Address for the management API and web UI")
 	rulesFile := flag.String("rules", "", "Path to rules YAML file")
 	flag.Parse()
 
 	fmt.Printf("Plasma Shield Proxy v%s\n", version)
 
-	// Initialize mode manager
+	// Initialize components
 	modeManager := mode.NewManager()
+	logStore := NewLogStore(1000)
 	log.Printf("Default mode: %s", modeManager.GlobalMode())
 
 	// Initialize rule engine
@@ -61,26 +103,37 @@ func main() {
 
 	// Create API server with management endpoints
 	apiMux := http.NewServeMux()
-	apiMux.Handle("/exec/check", execCheckHandler)
+
+	// Health check
 	apiMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	// Mode management endpoints
+	// Exec check (for agents)
+	apiMux.Handle("/exec/check", execCheckHandler)
+
+	// Mode management
 	apiMux.HandleFunc("/mode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		switch r.Method {
 		case http.MethodGet:
-			// Get current global mode
 			resp := map[string]interface{}{
 				"global_mode":  string(modeManager.GlobalMode()),
-				"agent_modes": modeManager.AllAgentModes(),
+				"agent_modes":  modeManager.AllAgentModes(),
 			}
-			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 
 		case http.MethodPut, http.MethodPost:
-			// Set global mode
 			var req struct {
 				Mode string `json:"mode"`
 			}
@@ -92,7 +145,6 @@ func main() {
 			case mode.Enforce, mode.Audit, mode.Lockdown:
 				modeManager.SetGlobalMode(mode.Mode(req.Mode))
 				log.Printf("Global mode changed to: %s", req.Mode)
-				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(map[string]string{"status": "ok", "mode": req.Mode})
 			default:
 				http.Error(w, "Invalid mode. Use: enforce, audit, lockdown", http.StatusBadRequest)
@@ -103,12 +155,105 @@ func main() {
 		}
 	})
 
+	// Per-agent mode management
 	apiMux.HandleFunc("/agent/", func(w http.ResponseWriter, r *http.Request) {
-		// Extract agent ID from path: /agent/{id}/mode
-		// Simple implementation - production would use a router
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "not yet implemented"})
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Parse path: /agent/{id}/mode
+		path := strings.TrimPrefix(r.URL.Path, "/agent/")
+		parts := strings.Split(path, "/")
+		if len(parts) < 2 || parts[1] != "mode" {
+			http.Error(w, "Invalid path. Use: /agent/{id}/mode", http.StatusBadRequest)
+			return
+		}
+		agentID := parts[0]
+
+		switch r.Method {
+		case http.MethodGet:
+			agentMode := modeManager.AgentMode(agentID)
+			json.NewEncoder(w).Encode(map[string]string{
+				"agent": agentID,
+				"mode":  string(agentMode),
+			})
+
+		case http.MethodPut:
+			var req struct {
+				Mode string `json:"mode"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+			switch mode.Mode(req.Mode) {
+			case mode.Enforce, mode.Audit, mode.Lockdown:
+				modeManager.SetAgentMode(agentID, mode.Mode(req.Mode))
+				log.Printf("Agent %s mode changed to: %s", agentID, req.Mode)
+				json.NewEncoder(w).Encode(map[string]string{"status": "ok", "agent": agentID, "mode": req.Mode})
+			default:
+				http.Error(w, "Invalid mode", http.StatusBadRequest)
+			}
+
+		case http.MethodDelete:
+			modeManager.ClearAgentMode(agentID)
+			log.Printf("Agent %s mode cleared", agentID)
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok", "agent": agentID, "message": "mode cleared"})
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
+
+	// Traffic logs
+	apiMux.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		limit := 50
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if n, err := strconv.Atoi(l); err == nil && n > 0 {
+				limit = n
+			}
+		}
+
+		logs := logStore.Get(limit)
+		json.NewEncoder(w).Encode(logs)
+	})
+
+	// Rules management
+	apiMux.HandleFunc("/rules", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get rules from the engine
+		// For now, return the rules file path info
+		resp := map[string]interface{}{
+			"rules_path": engine.RulesPath(),
+			"rule_count": engine.RuleCount(),
+			"rules":      []interface{}{}, // TODO: expose rules from engine
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	// Serve web UI at root
+	apiMux.Handle("/", web.Handler())
 
 	apiServer := &http.Server{
 		Addr:         *apiAddr,
@@ -127,7 +272,9 @@ func main() {
 	}()
 
 	go func() {
-		log.Printf("Starting API server on %s", *apiAddr)
+		log.Printf("Starting API + Web UI on %s", *apiAddr)
+		log.Printf("  Web UI: http://localhost%s/", *apiAddr)
+		log.Printf("  API:    http://localhost%s/mode", *apiAddr)
 		if err := apiServer.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatalf("API server error: %v", err)
 		}
@@ -140,7 +287,6 @@ func main() {
 
 	log.Println("Shutting down...")
 
-	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
