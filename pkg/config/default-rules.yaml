@@ -7,6 +7,12 @@
 # It CANNOT block local exec commands — use OS-level controls for that
 # (limited user permissions, containers, seccomp, AppArmor).
 
+# TIER-BASED RULES:
+# Rules can specify which tiers they apply to.
+# If no tier is specified, rule applies to all tiers.
+# Use "tiers: [crew, captain]" to apply only to specific tiers.
+# Commodore tier is typically exempt from most restrictions.
+
 rules:
   # ============================================
   # DANGEROUS DOMAINS
@@ -60,42 +66,50 @@ rules:
 
   # ============================================
   # CLOUD PROVIDER APIs (prevent self-provisioning)
+  # These rules apply to crew and captain tiers only.
+  # Commodore tier is exempt (needs cloud access for provisioning).
   # ============================================
 
   - id: block-hetzner-api
     domain: "api.hetzner.cloud"
     action: block
     description: "Block Hetzner API (prevent unauthorized VPS creation)"
+    tiers: [crew, captain]
     enabled: true
 
   - id: block-aws-api
     domain: "*.amazonaws.com"
     action: block
     description: "Block AWS APIs"
+    tiers: [crew, captain]
     enabled: true
 
   - id: block-gcp-api
     domain: "*.googleapis.com"
     action: block
     description: "Block Google Cloud APIs"
+    tiers: [crew, captain]
     enabled: true
 
   - id: block-digitalocean-api
     domain: "api.digitalocean.com"
     action: block
     description: "Block DigitalOcean API"
+    tiers: [crew, captain]
     enabled: true
 
   - id: block-vultr-api
     domain: "api.vultr.com"
     action: block
     description: "Block Vultr API"
+    tiers: [crew, captain]
     enabled: true
 
   - id: block-linode-api
     domain: "api.linode.com"
     action: block
     description: "Block Linode API"
+    tiers: [crew, captain]
     enabled: true
 
   # ============================================

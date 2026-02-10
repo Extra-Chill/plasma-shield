@@ -1,0 +1,46 @@
+# Plasma Shield Permission Tiers
+#
+# Agents are assigned to tiers. Rules are applied based on tier.
+# Higher tiers have more permissions (fewer restrictions).
+
+tiers:
+  # COMMODORE: Infrastructure administrators
+  # Full access to cloud APIs, can provision, manage shield
+  commodore:
+    description: "Infrastructure administrators with full access"
+    cloud_apis: allow      # Can call Hetzner, AWS, GCP, etc.
+    inter_agent: allow     # Can communicate with any agent
+    shell_services: allow  # Can use ngrok, tunnels (for debugging)
+    priority: 100          # Higher = more permissive
+    
+  # CAPTAIN: Fleet commanders  
+  # Can orchestrate their fleet, no cloud API access
+  captain:
+    description: "Fleet commanders who orchestrate agents"
+    cloud_apis: deny
+    inter_agent: fleet     # Can communicate within their fleet only
+    shell_services: deny
+    priority: 50
+    
+  # CREW: Standard agents
+  # Restricted access, can only reach allowed services
+  crew:
+    description: "Standard agents with baseline restrictions"
+    cloud_apis: deny
+    inter_agent: deny      # No direct agent-to-agent communication
+    shell_services: deny
+    priority: 10
+
+# Default tier for unassigned agents
+default_tier: crew
+
+# Agent assignments
+agents:
+  # Example assignments (override in runtime config)
+  # fleet-command:
+  #   tier: commodore
+  #   ip: 178.156.153.244
+  #
+  # sarai:
+  #   tier: crew
+  #   ip: 178.156.229.129

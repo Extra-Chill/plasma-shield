@@ -104,6 +104,50 @@ Multiple users, each with their own isolated fleet. Users cannot see each other.
 
 **Key insight:** Visibility does not grant access. The Commodore can see that User A has 3 agents, but cannot access those agents unless User A's shield is explicitly opened for a specific session.
 
+## Permission Tiers
+
+Agents are assigned to tiers that determine their network permissions:
+
+| Tier | Cloud APIs | Inter-Agent | Tunnels | Use Case |
+|------|------------|-------------|---------|----------|
+| **Commodore** | ✅ Allow | ✅ Any | ✅ Allow | Fleet Command, infrastructure |
+| **Captain** | ❌ Deny | 🔶 Fleet only | ❌ Deny | Fleet orchestrators |
+| **Crew** | ❌ Deny | ❌ Deny | ❌ Deny | Standard agents |
+
+### Tier Configuration
+
+```yaml
+# pkg/config/tiers.yaml
+agents:
+  fleet-command:
+    tier: commodore
+    ip: 178.156.153.244
+    
+  sarai:
+    tier: crew
+    ip: 178.156.229.129
+    
+  customer-*:
+    tier: crew
+```
+
+### Tier-Based Rules
+
+Rules can specify which tiers they apply to:
+
+```yaml
+- id: block-hetzner-api
+  domain: "api.hetzner.cloud"
+  action: block
+  tiers: [crew, captain]  # Commodore exempt
+  enabled: true
+```
+
+If no tier is specified, rule applies to all tiers. This enables:
+- Commodore agents to provision infrastructure
+- Captain agents to orchestrate without cloud access
+- Crew agents to work within strict boundaries
+
 ## Nested Shields
 
 Shields can be nested to arbitrary depth:
