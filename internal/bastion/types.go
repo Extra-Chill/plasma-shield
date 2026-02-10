@@ -18,3 +18,13 @@ const (
 	SessionEventDisconnect = "disconnect"
 	SessionEventCommand    = "command"
 )
+
+// Grant represents a time-limited access grant for SSH bastion access.
+type Grant struct {
+	ID        string    `json:"id"`
+	Principal string    `json:"principal"`   // who can use this grant
+	Target    string    `json:"target"`      // agent or fleet pattern
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedBy string    `json:"created_by"`  // audit trail
+	CreatedAt time.Time `json:"created_at"`
+}

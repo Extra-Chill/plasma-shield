@@ -92,6 +92,25 @@ func NewServer(cfg ServerConfig) *Server {
 		ManagementAuth(authConfig),
 	))
 
+	mux.Handle("/grants", applyMiddleware(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				handlers.ListGrantsHandler(w, r)
+			case http.MethodPost:
+				handlers.CreateGrantHandler(w, r)
+			default:
+				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			}
+		}),
+		ManagementAuth(authConfig),
+	))
+
+	mux.Handle("/grants/", applyMiddleware(
+		http.HandlerFunc(handlers.DeleteGrantHandler),
+		ManagementAuth(authConfig),
+	))
+
 	// Agent endpoint (requires agent token)
 	mux.Handle("/exec/check", applyMiddleware(
 		http.HandlerFunc(handlers.ExecCheckHandler),

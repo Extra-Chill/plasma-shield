@@ -82,6 +82,12 @@ func main() {
 			os.Exit(1)
 		}
 		handleAuth(args[1:])
+	case "access":
+		if len(args) < 2 {
+			fmt.Println("Usage: plasma-shield access <grant|list|revoke> [options]")
+			os.Exit(1)
+		}
+		handleAccess(args[1:])
 	default:
 		fmt.Printf("Unknown command: %s\n", args[0])
 		printUsage()
@@ -111,6 +117,7 @@ Commands:
   mode            Set global operating mode (enforce/audit/lockdown)
   agent           Manage agents (list, pause, kill, resume)
   rules           Manage blocking rules
+  access          Manage SSH bastion access grants
   logs            View traffic logs
   auth            Authentication (login, logout)
   version         Show version
@@ -131,6 +138,9 @@ Examples:
   plasma-shield rules list
   plasma-shield rules add --pattern "rm -rf" --action block
   plasma-shield rules remove <rule-id>
+  plasma-shield access grant --target sarai-chinwag --duration 30m
+  plasma-shield access list
+  plasma-shield access revoke <grant-id>
   plasma-shield logs --limit 50 --agent sarai
 
 Documentation: https://github.com/Extra-Chill/plasma-shield`)
@@ -726,5 +736,167 @@ func handleAuth(args []string) {
 		}
 	default:
 		exitError(fmt.Sprintf("unknown auth action: %s", action), 1)
+	}
+}
+
+func handleAccess(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: plasma-shield access <grant|list|revoke> [options]")
+		os.Exit(1)
+	}
+
+	action := args[0]
+
+	switch action {
+	case "grant":
+		// Parse grant flags
+		grantFlags := flag.NewFlagSet("access grant", flag.ExitOnError)
+		target := grantFlags.String("target", "", "Target agent or fleet pattern")
+		duration := grantFlags.String("duration", "30m", "Grant duration (e.g., 30m, 1h, 24h)")
+		principal := grantFlags.String("principal", "*", "Who can use this grant (default: anyone)")
+
+		grantFlags.Parse(args[1:])
+
+		if *target == "" {
+			exitError("--target is required", 1)
+		}
+
+		reqBody := map[string]interface{}{
+			"target":     *target,
+			"duration":   *duration,
+			"principal":  *principal,
+			"created_by": "cli",
+		}
+
+		respBody, statusCode, err := apiRequest("POST", "/grants", reqBody)
+		if err != nil {
+			exitError(err.Error(), 1)
+		}
+
+		if statusCode != http.StatusCreated && statusCode != http.StatusOK {
+			var errResp struct {
+				Error string `json:"error"`
+			}
+			json.Unmarshal(respBody, &errResp)
+			exitError(fmt.Sprintf("API error: %s", errResp.Error), 1)
+		}
+
+		var response struct {
+			Grant struct {
+				ID        string    `json:"id"`
+				Principal string    `json:"principal"`
+				Target    string    `json:"target"`
+				ExpiresAt time.Time `json:"expires_at"`
+				CreatedBy string    `json:"created_by"`
+				CreatedAt time.Time `json:"created_at"`
+			} `json:"grant"`
+			Message string `json:"message"`
+		}
+		json.Unmarshal(respBody, &response)
+
+		if jsonOut {
+			outputJSON(response)
+		} else {
+			fmt.Printf("✓ Grant created: %s\n", response.Grant.ID)
+			fmt.Printf("  Target: %s\n", response.Grant.Target)
+			fmt.Printf("  Principal: %s\n", response.Grant.Principal)
+			fmt.Printf("  Expires: %s\n", response.Grant.ExpiresAt.Format("2006-01-02 15:04:05 UTC"))
+		}
+
+	case "list":
+		// Parse list flags
+		listFlags := flag.NewFlagSet("access list", flag.ExitOnError)
+		activeOnly := listFlags.Bool("active", true, "Show only active grants")
+
+		listFlags.Parse(args[1:])
+
+		query := ""
+		if *activeOnly {
+			query = "?active=true"
+		}
+
+		respBody, statusCode, err := apiRequest("GET", "/grants"+query, nil)
+		if err != nil {
+			exitError(err.Error(), 1)
+		}
+
+		if statusCode != http.StatusOK {
+			var errResp struct {
+				Error string `json:"error"`
+			}
+			json.Unmarshal(respBody, &errResp)
+			exitError(fmt.Sprintf("API error: %s", errResp.Error), 1)
+		}
+
+		var response struct {
+			Grants []struct {
+				ID        string    `json:"id"`
+				Principal string    `json:"principal"`
+				Target    string    `json:"target"`
+				ExpiresAt time.Time `json:"expires_at"`
+				CreatedBy string    `json:"created_by"`
+				CreatedAt time.Time `json:"created_at"`
+			} `json:"grants"`
+			Total int `json:"total"`
+		}
+
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			exitError(fmt.Sprintf("failed to parse response: %v", err), 1)
+		}
+
+		if jsonOut {
+			outputJSON(response)
+		} else {
+			if response.Total == 0 {
+				fmt.Println("No active grants")
+			} else {
+				fmt.Printf("Grants (%d total):\n", response.Total)
+				fmt.Println("─────────────────────────────────────────────────────────────")
+				for _, grant := range response.Grants {
+					remaining := time.Until(grant.ExpiresAt).Round(time.Second)
+					status := "✓"
+					if remaining <= 0 {
+						status = "✗"
+						remaining = 0
+					}
+					fmt.Printf("%s %-24s → %-20s (expires in %s)\n",
+						status, grant.ID, grant.Target, remaining)
+				}
+			}
+		}
+
+	case "revoke":
+		if len(args) < 2 {
+			exitError("grant ID required: plasma-shield access revoke <grant-id>", 1)
+		}
+		grantID := args[1]
+
+		respBody, statusCode, err := apiRequest("DELETE", "/grants/"+grantID, nil)
+		if err != nil {
+			exitError(err.Error(), 1)
+		}
+
+		if statusCode != http.StatusOK {
+			var errResp struct {
+				Error string `json:"error"`
+			}
+			json.Unmarshal(respBody, &errResp)
+			exitError(fmt.Sprintf("API error: %s", errResp.Error), 1)
+		}
+
+		var response struct {
+			ID      string `json:"id"`
+			Message string `json:"message"`
+		}
+		json.Unmarshal(respBody, &response)
+
+		if jsonOut {
+			outputJSON(response)
+		} else {
+			fmt.Printf("✓ %s\n", response.Message)
+		}
+
+	default:
+		exitError(fmt.Sprintf("unknown access action: %s (use grant, list, or revoke)", action), 1)
 	}
 }

@@ -19,6 +19,7 @@ type Store struct {
 	rules         map[string]*Rule
 	logs          []LogEntry
 	bastionLogs   *bastion.LogStore
+	grants        *bastion.GrantStore
 	startedAt     time.Time
 	requestsTotal int64
 	blockedTotal  int64
@@ -26,13 +27,24 @@ type Store struct {
 
 // NewStore creates a new in-memory store.
 func NewStore() *Store {
+	return NewStoreWithPaths("", "")
+}
+
+// NewStoreWithPaths creates a store with optional file persistence paths.
+func NewStoreWithPaths(grantsPath string, _ string) *Store {
 	return &Store{
 		agents:      make(map[string]*Agent),
 		rules:       make(map[string]*Rule),
 		logs:        make([]LogEntry, 0),
 		bastionLogs: bastion.NewLogStore(bastion.DefaultLogLimit),
+		grants:      bastion.NewGrantStore(grantsPath),
 		startedAt:   time.Now(),
 	}
+}
+
+// Grants returns the grant store for external access.
+func (s *Store) Grants() *bastion.GrantStore {
+	return s.grants
 }
 
 // Handlers holds all HTTP handlers and their dependencies.
@@ -384,6 +396,113 @@ func (h *Handlers) ListBastionSessionsHandler(w http.ResponseWriter, r *http.Req
 		Total:    total,
 		Offset:   offset,
 		Limit:    limit,
+	})
+}
+
+// CreateGrantHandler handles POST /grants.
+func (h *Handlers) CreateGrantHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req CreateGrantRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Target == "" {
+		writeError(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	if req.Duration == "" {
+		writeError(w, http.StatusBadRequest, "duration is required")
+		return
+	}
+
+	duration, err := time.ParseDuration(req.Duration)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid duration format")
+		return
+	}
+
+	if duration <= 0 {
+		writeError(w, http.StatusBadRequest, "duration must be positive")
+		return
+	}
+
+	// Default principal to "*" (any) if not specified
+	principal := req.Principal
+	if principal == "" {
+		principal = "*"
+	}
+
+	// Default created_by if not specified
+	createdBy := req.CreatedBy
+	if createdBy == "" {
+		createdBy = "api"
+	}
+
+	grant := h.store.grants.Add(principal, req.Target, createdBy, duration)
+
+	writeJSON(w, http.StatusCreated, CreateGrantResponse{
+		Grant:   *grant,
+		Message: "grant created successfully",
+	})
+}
+
+// ListGrantsHandler handles GET /grants.
+func (h *Handlers) ListGrantsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Check for ?active=true query param
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var grants []*bastion.Grant
+	if activeOnly {
+		grants = h.store.grants.ListActive()
+	} else {
+		grants = h.store.grants.List()
+	}
+
+	// Convert to value slice for response
+	result := make([]bastion.Grant, len(grants))
+	for i, g := range grants {
+		result[i] = *g
+	}
+
+	writeJSON(w, http.StatusOK, GrantListResponse{
+		Grants: result,
+		Total:  len(result),
+	})
+}
+
+// DeleteGrantHandler handles DELETE /grants/{id}.
+func (h *Handlers) DeleteGrantHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	grantID := strings.TrimPrefix(r.URL.Path, "/grants/")
+	if grantID == "" || grantID == r.URL.Path {
+		writeError(w, http.StatusBadRequest, "missing grant ID")
+		return
+	}
+
+	if !h.store.grants.Delete(grantID) {
+		writeError(w, http.StatusNotFound, "grant not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, DeleteGrantResponse{
+		ID:      grantID,
+		Message: "grant revoked successfully",
 	})
 }
 

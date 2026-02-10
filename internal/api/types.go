@@ -126,3 +126,29 @@ type ErrorResponse struct {
 	Code    int    `json:"code"`
 	Details string `json:"details,omitempty"`
 }
+
+// CreateGrantRequest is the request body for POST /grants.
+type CreateGrantRequest struct {
+	Principal string `json:"principal,omitempty"` // who can use this grant
+	Target    string `json:"target"`              // agent or fleet pattern
+	Duration  string `json:"duration"`            // e.g., "30m", "1h"
+	CreatedBy string `json:"created_by,omitempty"` // audit trail
+}
+
+// CreateGrantResponse is the response for POST /grants.
+type CreateGrantResponse struct {
+	Grant   bastion.Grant `json:"grant"`
+	Message string        `json:"message"`
+}
+
+// GrantListResponse is the response for GET /grants.
+type GrantListResponse struct {
+	Grants []bastion.Grant `json:"grants"`
+	Total  int             `json:"total"`
+}
+
+// DeleteGrantResponse is the response for DELETE /grants/{id}.
+type DeleteGrantResponse struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+}
