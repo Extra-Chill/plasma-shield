@@ -117,13 +117,14 @@ func TestLoadDefaultRules(t *testing.T) {
 		t.Error("expected rules to be loaded")
 	}
 
-	// Test a known rule from default-rules.yaml
-	allowed, rule, _ := e.CheckCommand("rm -rf /")
+	// Test a known domain rule from default-rules.yaml
+	// (command patterns were removed - shield operates at network level only)
+	allowed, rule, _ := e.CheckDomain("pastebin.com")
 	if allowed {
-		t.Error("expected rm -rf / to be blocked")
+		t.Error("expected pastebin.com to be blocked")
 	}
-	if rule == nil || rule.ID != "block-rm-rf-root" {
-		t.Errorf("expected rule block-rm-rf-root, got %v", rule)
+	if rule == nil || rule.ID != "block-pastebin" {
+		t.Errorf("expected rule block-pastebin, got %v", rule)
 	}
 }
 

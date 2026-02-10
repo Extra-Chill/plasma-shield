@@ -56,13 +56,17 @@ func (i *Inspector) CheckRequest(r *http.Request) (shouldBlock bool, ruleMatched
 	host := i.ExtractHost(r)
 
 	// Check if domain matches any blocking rule
-	allowed, ruleID, ruleReason := i.engine.CheckDomain(host)
+	allowed, matchedRule, ruleReason := i.engine.CheckDomain(host)
 	ruleMatched = !allowed
 
 	// Determine if we should actually block based on mode
 	shouldBlock = i.modeManager.ShouldBlock(agentID, ruleMatched)
 
 	// Build reason string
+	ruleID := ""
+	if matchedRule != nil {
+		ruleID = matchedRule.ID
+	}
 	if ruleMatched {
 		reason = ruleReason
 		if ruleID != "" {
