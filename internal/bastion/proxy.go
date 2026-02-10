@@ -26,6 +26,13 @@ func (s *Server) handleDirectTCPIP(sshConn *ssh.ServerConn, channel ssh.NewChann
 		return
 	}
 
+	// Check grant BEFORE accepting channel
+	grant := s.grants.ValidateAccess(sshConn.User(), payload.DestAddr)
+	if grant == nil {
+		channel.Reject(ssh.Prohibited, "no valid grant for target")
+		return
+	}
+
 	conn, reqs, err := channel.Accept()
 	if err != nil {
 		log.Printf("bastion channel accept failed: %v", err)
@@ -33,12 +40,6 @@ func (s *Server) handleDirectTCPIP(sshConn *ssh.ServerConn, channel ssh.NewChann
 	}
 	defer conn.Close()
 	go ssh.DiscardRequests(reqs)
-
-	grant := s.grants.ValidateAccess(sshConn.User(), payload.DestAddr)
-	if grant == nil {
-		channel.Reject(ssh.Prohibited, "no valid grant for target")
-		return
-	}
 
 	address := net.JoinHostPort(payload.DestAddr, strconv.Itoa(int(payload.DestPort)))
 	targetConn, err := net.Dial("tcp", address)
