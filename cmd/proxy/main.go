@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Extra-Chill/plasma-shield/internal/fleet"
 	"github.com/Extra-Chill/plasma-shield/internal/mode"
 	"github.com/Extra-Chill/plasma-shield/internal/proxy"
 	"github.com/Extra-Chill/plasma-shield/internal/rules"
@@ -67,7 +68,7 @@ func (s *LogStore) Get(limit int) []proxy.LogEntry {
 func main() {
 	// Parse command line flags
 	proxyAddr := flag.String("proxy-addr", ":8080", "Address for the proxy server")
-	apiAddr := flag.String("api-addr", ":9000", "Address for the management API and web UI")
+	apiAddr := flag.String("api-addr", "127.0.0.1:9000", "Address for the management API and web UI (localhost only)")
 	rulesFile := flag.String("rules", "", "Path to rules YAML file")
 	flag.Parse()
 
@@ -75,6 +76,7 @@ func main() {
 
 	// Initialize components
 	modeManager := mode.NewManager()
+	fleetManager := fleet.NewManager()
 	logStore := NewLogStore(1000)
 	log.Printf("Default mode: %s", modeManager.GlobalMode())
 
@@ -250,6 +252,132 @@ func main() {
 			"rules":      []interface{}{}, // TODO: expose rules from engine
 		}
 		json.NewEncoder(w).Encode(resp)
+	})
+
+	// Fleet management
+	apiMux.HandleFunc("/fleet/mode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		tenantID := r.URL.Query().Get("tenant")
+		if tenantID == "" {
+			tenantID = "default"
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			mode := fleetManager.GetMode(tenantID)
+			json.NewEncoder(w).Encode(map[string]string{
+				"tenant": tenantID,
+				"mode":   string(mode),
+			})
+
+		case http.MethodPut:
+			var req struct {
+				Mode string `json:"mode"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+			switch fleet.Mode(req.Mode) {
+			case fleet.Isolated, fleet.Fleet:
+				fleetManager.SetMode(tenantID, fleet.Mode(req.Mode))
+				log.Printf("Tenant %s fleet mode changed to: %s", tenantID, req.Mode)
+				json.NewEncoder(w).Encode(map[string]string{
+					"status": "ok",
+					"tenant": tenantID,
+					"mode":   req.Mode,
+				})
+			default:
+				http.Error(w, "Invalid mode. Use: isolated, fleet", http.StatusBadRequest)
+			}
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	apiMux.HandleFunc("/fleet/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		tenantID := r.URL.Query().Get("tenant")
+		if tenantID == "" {
+			tenantID = "default"
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			// Get agents - respects fleet mode (returns empty in isolated mode)
+			agents := fleetManager.GetAgents(tenantID)
+			mode := fleetManager.GetMode(tenantID)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tenant": tenantID,
+				"mode":   string(mode),
+				"agents": agents,
+			})
+
+		case http.MethodPost:
+			var agent fleet.Agent
+			if err := json.NewDecoder(r.Body).Decode(&agent); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+			if agent.ID == "" {
+				http.Error(w, "Agent ID required", http.StatusBadRequest)
+				return
+			}
+			fleetManager.AddAgent(tenantID, agent)
+			log.Printf("Agent %s added to tenant %s", agent.ID, tenantID)
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "ok",
+				"tenant": tenantID,
+				"agent":  agent.ID,
+			})
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	apiMux.HandleFunc("/fleet/can-communicate", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		from := r.URL.Query().Get("from")
+		to := r.URL.Query().Get("to")
+
+		if from == "" || to == "" {
+			http.Error(w, "from and to parameters required", http.StatusBadRequest)
+			return
+		}
+
+		canComm := fleetManager.CanCommunicate(from, to)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"from":            from,
+			"to":              to,
+			"can_communicate": canComm,
+		})
 	})
 
 	// Serve web UI at root

@@ -296,6 +296,19 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="card">
+                <h2>Fleet Mode</h2>
+                <div class="mode-buttons">
+                    <button class="mode-btn" :class="{ active: fleetMode === 'isolated' }" @click="setFleetMode('isolated')" style="--active-color: var(--accent);">
+                        🔒 Isolated
+                    </button>
+                    <button class="mode-btn" :class="{ active: fleetMode === 'fleet' }" @click="setFleetMode('fleet')" style="--active-color: var(--success);">
+                        🔗 Fleet
+                    </button>
+                </div>
+                <p style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-dim);" x-text="fleetMode === 'isolated' ? 'Agents cannot see or communicate with each other' : 'Agents can discover and communicate with fleet members'"></p>
+            </div>
         </div>
         
         <!-- Tabs -->
@@ -304,6 +317,7 @@
                 <button class="tab" :class="{ active: tab === 'logs' }" @click="tab = 'logs'">Traffic Logs</button>
                 <button class="tab" :class="{ active: tab === 'agents' }" @click="tab = 'agents'">Agents</button>
                 <button class="tab" :class="{ active: tab === 'rules' }" @click="tab = 'rules'">Rules</button>
+                <button class="tab" :class="{ active: tab === 'fleet' }" @click="tab = 'fleet'">Fleet</button>
             </div>
             
             <!-- Logs Tab -->
@@ -396,6 +410,42 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Fleet Tab -->
+            <div x-show="tab === 'fleet'">
+                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg); border-radius: 0.375rem;">
+                    <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+                        <strong>Current Mode:</strong> 
+                        <span :class="fleetMode === 'isolated' ? 'action-block' : 'action-allow'" x-text="fleetMode === 'isolated' ? '🔒 Isolated' : '🔗 Fleet'"></span>
+                    </p>
+                    <p style="font-size: 0.75rem; color: var(--text-dim);" x-text="fleetMode === 'isolated' ? 'Agents operate independently. They cannot discover or communicate with other agents.' : 'Agents can discover other fleet members and communicate via the shield.'"></p>
+                </div>
+                
+                <h3 style="font-size: 0.875rem; color: var(--text-dim); margin-bottom: 0.75rem;">Fleet Agents</h3>
+                <template x-if="fleetAgents.length === 0">
+                    <div class="empty" x-text="fleetMode === 'isolated' ? 'Agent list hidden in isolated mode' : 'No agents registered in fleet'"></div>
+                </template>
+                <table x-show="fleetAgents.length > 0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>IP</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="agent in fleetAgents" :key="agent.id">
+                            <tr>
+                                <td x-text="agent.id"></td>
+                                <td x-text="agent.name || '-'"></td>
+                                <td x-text="agent.ip || '-'"></td>
+                                <td x-text="agent.description || '-'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
     
@@ -404,6 +454,8 @@
             return {
                 health: 'unknown',
                 globalMode: 'unknown',
+                fleetMode: 'isolated',
+                fleetAgents: [],
                 agentModes: {},
                 logs: [],
                 rules: [],
@@ -447,6 +499,12 @@
                         this.stats.allowed = this.logs.filter(l => l.action === 'allow').length;
                         this.stats.blocked = this.logs.filter(l => l.action === 'block').length;
                         
+                        // Fleet mode
+                        const fleetRes = await fetch('/fleet/agents');
+                        const fleetData = await fleetRes.json();
+                        this.fleetMode = fleetData.mode || 'isolated';
+                        this.fleetAgents = fleetData.agents || [];
+                        
                     } catch (e) {
                         this.error = 'Failed to connect to shield router: ' + e.message;
                         this.health = 'ERROR';
@@ -465,6 +523,21 @@
                         this.globalMode = mode;
                     } catch (e) {
                         this.error = 'Failed to set mode: ' + e.message;
+                    }
+                },
+                
+                async setFleetMode(mode) {
+                    try {
+                        await fetch('/fleet/mode', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode })
+                        });
+                        this.fleetMode = mode;
+                        // Refresh to update agent list visibility
+                        await this.refresh();
+                    } catch (e) {
+                        this.error = 'Failed to set fleet mode: ' + e.message;
                     }
                 },
                 
