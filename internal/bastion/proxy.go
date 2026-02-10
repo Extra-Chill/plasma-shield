@@ -1,11 +1,13 @@
 package bastion
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -17,7 +19,7 @@ type directTCPIP struct {
 	OrigPort uint32
 }
 
-func handleDirectTCPIP(channel ssh.NewChannel) {
+func (s *Server) handleDirectTCPIP(sshConn *ssh.ServerConn, channel ssh.NewChannel) {
 	var payload directTCPIP
 	if err := ssh.Unmarshal(channel.ExtraData(), &payload); err != nil {
 		channel.Reject(ssh.Prohibited, "invalid direct-tcpip payload")
@@ -39,6 +41,18 @@ func handleDirectTCPIP(channel ssh.NewChannel) {
 		return
 	}
 	defer targetConn.Close()
+
+	sessionID := fmt.Sprintf("%x-%d", sshConn.SessionID(), time.Now().UnixNano())
+	principal := sshConn.User()
+	grantID := ""
+	if sshConn.Permissions != nil {
+		if id, ok := sshConn.Permissions.Extensions["grant_id"]; ok {
+			grantID = id
+		}
+	}
+
+	s.logger.LogConnect(sessionID, grantID, principal, address)
+	defer s.logger.LogDisconnect(sessionID, grantID, principal, address)
 
 	proxyBidirectional(conn, targetConn)
 }

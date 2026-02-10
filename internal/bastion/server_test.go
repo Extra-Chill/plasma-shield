@@ -42,9 +42,12 @@ func TestBastionDirectTCPIPProxy(t *testing.T) {
 	<-serverReady
 
 	tempDir := t.TempDir()
+	logStore := NewLogStore(10)
+	logger := NewLogger(logStore)
 	server, err := NewServer(Config{
 		Addr:        "127.0.0.1:0",
 		HostKeyPath: filepath.Join(tempDir, "bastion_host_key"),
+		Logger:      logger,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)

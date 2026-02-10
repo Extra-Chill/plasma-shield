@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Extra-Chill/plasma-shield/internal/bastion"
 )
 
 // Store holds the in-memory state for the shield.
@@ -16,6 +18,7 @@ type Store struct {
 	agents        map[string]*Agent
 	rules         map[string]*Rule
 	logs          []LogEntry
+	bastionLogs   *bastion.LogStore
 	startedAt     time.Time
 	requestsTotal int64
 	blockedTotal  int64
@@ -24,10 +27,11 @@ type Store struct {
 // NewStore creates a new in-memory store.
 func NewStore() *Store {
 	return &Store{
-		agents:    make(map[string]*Agent),
-		rules:     make(map[string]*Rule),
-		logs:      make([]LogEntry, 0),
-		startedAt: time.Now(),
+		agents:      make(map[string]*Agent),
+		rules:       make(map[string]*Rule),
+		logs:        make([]LogEntry, 0),
+		bastionLogs: bastion.NewLogStore(bastion.DefaultLogLimit),
+		startedAt:   time.Now(),
 	}
 }
 
@@ -347,6 +351,39 @@ func (h *Handlers) ListLogsHandler(w http.ResponseWriter, r *http.Request) {
 		Total:  total,
 		Offset: offset,
 		Limit:  limit,
+	})
+}
+
+// ListBastionSessionsHandler handles GET /bastion/sessions.
+func (h *Handlers) ListBastionSessionsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	query := r.URL.Query()
+	limit := 100
+	offset := 0
+
+	if l := query.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 1000 {
+			limit = parsed
+		}
+	}
+
+	if o := query.Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	events, total := h.store.bastionLogs.List(offset, limit)
+
+	writeJSON(w, http.StatusOK, BastionSessionListResponse{
+		Sessions: events,
+		Total:    total,
+		Offset:   offset,
+		Limit:    limit,
 	})
 }
 

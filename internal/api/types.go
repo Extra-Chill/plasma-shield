@@ -1,7 +1,11 @@
 // Package api provides the REST API for Plasma Shield management.
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/Extra-Chill/plasma-shield/internal/bastion"
+)
 
 // StatusResponse is the response for GET /status.
 type StatusResponse struct {
@@ -93,6 +97,14 @@ type LogListResponse struct {
 	Total  int        `json:"total"`
 	Offset int        `json:"offset"`
 	Limit  int        `json:"limit"`
+}
+
+// BastionSessionListResponse is the response for GET /bastion/sessions.
+type BastionSessionListResponse struct {
+	Sessions []bastion.SessionEvent `json:"sessions"`
+	Total    int                    `json:"total"`
+	Offset   int                    `json:"offset"`
+	Limit    int                    `json:"limit"`
 }
 
 // ExecCheckRequest is the request body for POST /exec/check.

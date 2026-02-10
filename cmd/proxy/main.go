@@ -80,6 +80,8 @@ func main() {
 	modeManager := mode.NewManager()
 	fleetManager := fleet.NewManager()
 	logStore := NewLogStore(1000)
+	bastionLogStore := bastion.NewLogStore(bastion.DefaultLogLimit)
+	bastionLogger := bastion.NewLogger(bastionLogStore)
 	log.Printf("Default mode: %s", modeManager.GlobalMode())
 
 	// Initialize rule engine
@@ -395,7 +397,10 @@ func main() {
 
 	var bastionServer *bastion.Server
 	if *bastionAddr != "" {
-		server, err := bastion.NewServer(bastion.Config{Addr: *bastionAddr})
+		server, err := bastion.NewServer(bastion.Config{
+			Addr:   *bastionAddr,
+			Logger: bastionLogger,
+		})
 		if err != nil {
 			log.Fatalf("Failed to initialize bastion: %v", err)
 		}

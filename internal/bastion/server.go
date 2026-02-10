@@ -22,6 +22,7 @@ type Config struct {
 	Addr               string
 	HostKeyPath        string
 	AuthorizedKeysPath string
+	Logger             *Logger
 }
 
 type Server struct {
@@ -31,6 +32,7 @@ type Server struct {
 	closed         bool
 	mu             sync.Mutex
 	authorizedKeys map[string]struct{}
+	logger         *Logger
 }
 
 func NewServer(config Config) (*Server, error) {
@@ -50,6 +52,9 @@ func NewServer(config Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load authorized keys: %w", err)
 	}
+	if config.Logger == nil {
+		return nil, errors.New("bastion logger required")
+	}
 
 	sshConfig := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
@@ -68,6 +73,7 @@ func NewServer(config Config) (*Server, error) {
 		config:         config,
 		sshConfig:      sshConfig,
 		authorizedKeys: authorizedKeys,
+		logger:         config.Logger,
 	}, nil
 }
 
@@ -135,7 +141,7 @@ func (s *Server) handleConn(netConn net.Conn) {
 	for channel := range channels {
 		switch channel.ChannelType() {
 		case "direct-tcpip":
-			go handleDirectTCPIP(channel)
+			go s.handleDirectTCPIP(sshConn, channel)
 		default:
 			channel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		}

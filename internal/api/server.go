@@ -87,6 +87,11 @@ func NewServer(cfg ServerConfig) *Server {
 		ManagementAuth(authConfig),
 	))
 
+	mux.Handle("/bastion/sessions", applyMiddleware(
+		http.HandlerFunc(handlers.ListBastionSessionsHandler),
+		ManagementAuth(authConfig),
+	))
+
 	// Agent endpoint (requires agent token)
 	mux.Handle("/exec/check", applyMiddleware(
 		http.HandlerFunc(handlers.ExecCheckHandler),
