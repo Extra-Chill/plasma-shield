@@ -1,0 +1,6 @@
+id: plasma-shield
+version_targets:
+  - file: cmd/proxy/main.go
+    pattern: 'version\s*=\s*"(\d+\.\d+\.\d+)"'
+changelog_target: docs/CHANGELOG.md
+build_command: make build
