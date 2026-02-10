@@ -53,16 +53,18 @@ func (h *Handler) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	domain := h.inspector.ExtractHost(r)
 	agentToken := h.inspector.ExtractAgentToken(r)
 
-	// Check if domain is allowed
-	allowed, reason := h.inspector.CheckDomain(domain)
+	// Check if request should be blocked (mode-aware)
+	shouldBlock, ruleMatched, reason := h.inspector.CheckRequest(r)
 	action := "allow"
-	if !allowed {
+	if shouldBlock {
 		action = "block"
+	} else if ruleMatched {
+		action = "audit" // Would have blocked, but in audit mode
 	}
 
 	h.logRequest(agentToken, domain, r.Method, action, reason)
 
-	if !allowed {
+	if shouldBlock {
 		http.Error(w, "Blocked by Plasma Shield: "+reason, http.StatusForbidden)
 		return
 	}
@@ -100,16 +102,18 @@ func (h *Handler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	domain := h.inspector.ExtractHost(r)
 	agentToken := h.inspector.ExtractAgentToken(r)
 
-	// Check if domain is allowed
-	allowed, reason := h.inspector.CheckDomain(domain)
+	// Check if request should be blocked (mode-aware)
+	shouldBlock, ruleMatched, reason := h.inspector.CheckRequest(r)
 	action := "allow"
-	if !allowed {
+	if shouldBlock {
 		action = "block"
+	} else if ruleMatched {
+		action = "audit"
 	}
 
 	h.logRequest(agentToken, domain, "CONNECT", action, reason)
 
-	if !allowed {
+	if shouldBlock {
 		http.Error(w, "Blocked by Plasma Shield: "+reason, http.StatusForbidden)
 		return
 	}
