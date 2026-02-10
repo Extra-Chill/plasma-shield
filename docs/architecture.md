@@ -179,6 +179,28 @@ Human-only command-line interface. Installed on the operator's machine.
 
 Communicates with the shield router over a secure channel that agents cannot reach.
 
+### Web Dashboard
+
+Browser-based management interface embedded in the shield router. Designed for accessibility — manage your fleet from any device, including your phone at 3am during emergencies.
+
+**Access:** `http://localhost:9000` via SSH tunnel
+
+```bash
+ssh -L 9000:localhost:9000 root@<shield-ip>
+# Then open http://localhost:9000 in your browser
+```
+
+**Features:**
+- Mode controls (enforce/audit/lockdown)
+- Fleet mode toggle (isolated/fleet)
+- Traffic log viewer with filtering
+- Agent management
+- Rule viewer
+
+**Tech:** Alpine.js (~15KB), dark theme, mobile-responsive. No external dependencies — everything embedded in the Go binary.
+
+**Security:** API binds to `127.0.0.1:9000` only. Never exposed publicly. SSH key = your identity.
+
 ### Rule Engine
 
 Pattern-matching engine that evaluates:

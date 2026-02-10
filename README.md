@@ -100,6 +100,7 @@ It does NOT protect against:
 |-----------|-------------|
 | `plasma-shield-router` | Proxy service that inspects and filters traffic |
 | `plasma-shield` | CLI for human operators |
+| Web Dashboard | Embedded UI at `localhost:9000` (via SSH tunnel) |
 | `lockdown.sh` | Script to configure agent iptables |
 
 ## Quick Start
@@ -124,7 +125,23 @@ curl -fsSL https://raw.githubusercontent.com/Extra-Chill/plasma-shield/main/prov
 
 This configures iptables to force all traffic through the shield.
 
-### 3. Manage via CLI
+### 3. Access the Dashboard
+
+```bash
+# SSH tunnel to access the web UI (API binds to localhost only)
+ssh -L 9000:localhost:9000 root@<ROUTER_IP>
+
+# Open http://localhost:9000 in your browser
+```
+
+The dashboard provides:
+- Real-time mode controls (enforce/audit/lockdown)
+- Fleet mode toggle (isolated/fleet)
+- Traffic log viewer
+- Agent management
+- Rule viewer
+
+### 4. Manage via CLI
 
 ```bash
 # Install CLI on your personal machine
@@ -206,10 +223,10 @@ make run-cli
 - [x] Operating modes (enforce/audit/lockdown)
 - [x] Proxy handler tests
 - [x] API handler tests
-- [ ] HTTP/HTTPS proxy (core implementation)
-- [ ] WireGuard management interface
+- [x] HTTP/HTTPS proxy (core implementation)
+- [x] Web dashboard (embedded Alpine.js UI)
 - [ ] Agent lockdown scripts (iptables)
-- [ ] Dashboard UI (Homeboy module)
+- [ ] WireGuard management interface
 - [ ] Multi-tenant support
 - [ ] Distributed shield mesh
 
