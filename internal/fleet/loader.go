@@ -80,11 +80,16 @@ func ApplyConfig(mgr *Manager, config *Config) {
 
 		// Add agents
 		for _, ac := range tc.Agents {
+			tier := ac.Tier
+			if tier == "" {
+				tier = "crew" // Default tier
+			}
 			agent := Agent{
 				ID:          ac.ID,
 				Name:        ac.Name,
 				IP:          ac.IP,
 				WebhookURL:  ac.WebhookURL,
+				Tier:        tier,
 				Description: ac.Description,
 			}
 			mgr.AddAgent(tc.ID, agent)

@@ -45,15 +45,18 @@ func main() {
 
 	// Create handlers
 	inspector := proxy.NewInspector(rulesEngine, modeManager)
-	forwardHandler := proxy.NewHandler(inspector)
 	reverseHandler := proxy.NewReverseHandler(fleetMgr)
 
-	// Load fleet config (agents, tokens)
+	// Load fleet config (agents, tokens) BEFORE creating forward handler
+	// so the agent registry is populated
 	if err := loadFleetConfig(fleetMgr, reverseHandler, *agentsFile); err != nil {
 		log.Printf("Warning: failed to load fleet config from %s: %v", *agentsFile, err)
 		// Also try loading tokens from environment as fallback
 		loadTokens(reverseHandler)
 	}
+
+	// Create forward handler with agent registry for IP validation
+	forwardHandler := proxy.NewHandler(inspector, proxy.WithAgentRegistry(fleetMgr))
 
 	// Create servers
 	outboundServer := &http.Server{

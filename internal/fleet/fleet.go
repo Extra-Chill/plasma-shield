@@ -21,6 +21,7 @@ type Agent struct {
 	Name        string `json:"name"`
 	IP          string `json:"ip,omitempty"`
 	WebhookURL  string `json:"webhook_url,omitempty"`
+	Tier        string `json:"tier,omitempty"` // "commodore", "captain", "crew"
 	Description string `json:"description,omitempty"`
 }
 
@@ -37,6 +38,8 @@ type Manager struct {
 	tenants map[string]*Tenant
 	// agentToTenant maps agent IDs to tenant IDs for quick lookup
 	agentToTenant map[string]string
+	// ipToAgent maps IP addresses to agent info for fast validation
+	ipToAgent map[string]*Agent
 }
 
 // NewManager creates a new fleet manager.
@@ -44,7 +47,35 @@ func NewManager() *Manager {
 	return &Manager{
 		tenants:       make(map[string]*Tenant),
 		agentToTenant: make(map[string]string),
+		ipToAgent:     make(map[string]*Agent),
 	}
+}
+
+// ValidateAgentIP checks if an IP belongs to a registered agent.
+// Returns agent ID and tier if valid, empty strings if not.
+// Implements the proxy.AgentRegistry interface.
+func (m *Manager) ValidateAgentIP(ip string) (agentID string, tier string, valid bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	agent, ok := m.ipToAgent[ip]
+	if !ok {
+		return "", "", false
+	}
+
+	tier = agent.Tier
+	if tier == "" {
+		tier = "crew" // Default tier
+	}
+
+	return agent.ID, tier, true
+}
+
+// GetAgentByIP returns the agent with the given IP.
+func (m *Manager) GetAgentByIP(ip string) *Agent {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.ipToAgent[ip]
 }
 
 // CreateTenant creates a new tenant with default isolated mode.
@@ -122,6 +153,12 @@ func (m *Manager) AddAgent(tenantID string, agent Agent) {
 
 	tenant.Agents[agent.ID] = agent
 	m.agentToTenant[agent.ID] = tenantID
+
+	// Add IP lookup if agent has IP
+	if agent.IP != "" {
+		agentCopy := agent // Store copy so pointer remains valid
+		m.ipToAgent[agent.IP] = &agentCopy
+	}
 }
 
 // RemoveAgent removes an agent from a tenant's fleet.
@@ -132,6 +169,11 @@ func (m *Manager) RemoveAgent(tenantID, agentID string) {
 	tenant, exists := m.tenants[tenantID]
 	if !exists {
 		return
+	}
+
+	// Remove IP lookup
+	if agent, ok := tenant.Agents[agentID]; ok && agent.IP != "" {
+		delete(m.ipToAgent, agent.IP)
 	}
 
 	delete(tenant.Agents, agentID)

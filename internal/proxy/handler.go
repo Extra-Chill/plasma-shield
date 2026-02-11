@@ -12,6 +12,8 @@ import (
 // LogEntry represents a logged request.
 type LogEntry struct {
 	Timestamp  time.Time `json:"timestamp"`
+	SourceIP   string    `json:"source_ip,omitempty"`
+	AgentID    string    `json:"agent_id,omitempty"`
 	AgentToken string    `json:"agent_token,omitempty"`
 	Domain     string    `json:"domain"`
 	Method     string    `json:"method"`
@@ -19,15 +21,34 @@ type LogEntry struct {
 	Reason     string    `json:"reason,omitempty"`
 }
 
+// AgentRegistry validates agent source IPs.
+// Implement this interface to control which IPs can use the proxy.
+type AgentRegistry interface {
+	// ValidateAgentIP checks if the IP belongs to a registered agent.
+	// Returns agent ID and tier if valid, empty strings if not.
+	ValidateAgentIP(ip string) (agentID string, tier string, valid bool)
+}
+
 // Handler is the main proxy HTTP handler.
 type Handler struct {
 	inspector *Inspector
+	registry  AgentRegistry
 	client    *http.Client
 }
 
+// HandlerOption configures the Handler.
+type HandlerOption func(*Handler)
+
+// WithAgentRegistry sets the agent registry for IP validation.
+func WithAgentRegistry(r AgentRegistry) HandlerOption {
+	return func(h *Handler) {
+		h.registry = r
+	}
+}
+
 // NewHandler creates a new proxy handler.
-func NewHandler(inspector *Inspector) *Handler {
-	return &Handler{
+func NewHandler(inspector *Inspector, opts ...HandlerOption) *Handler {
+	h := &Handler{
 		inspector: inspector,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -37,19 +58,57 @@ func NewHandler(inspector *Inspector) *Handler {
 			},
 		},
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+// extractClientIP extracts the real client IP from the request.
+func extractClientIP(r *http.Request) string {
+	// RemoteAddr is "IP:port"
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // ServeHTTP handles incoming proxy requests.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodConnect {
-		h.handleConnect(w, r)
+	// Validate source IP against agent registry
+	sourceIP := extractClientIP(r)
+	agentID, tier, valid := h.validateSource(sourceIP)
+
+	if !valid {
+		log.Printf(`{"timestamp":"%s","source_ip":"%s","action":"reject","reason":"unregistered agent IP"}`,
+			time.Now().UTC().Format(time.RFC3339), sourceIP)
+		http.Error(w, "Forbidden: unregistered agent", http.StatusForbidden)
 		return
 	}
-	h.handleHTTP(w, r)
+
+	// Store agent info in context for downstream use
+	r.Header.Set("X-Agent-ID", agentID)
+	r.Header.Set("X-Agent-Tier", tier)
+
+	if r.Method == http.MethodConnect {
+		h.handleConnect(w, r, sourceIP, agentID)
+		return
+	}
+	h.handleHTTP(w, r, sourceIP, agentID)
+}
+
+// validateSource checks if the source IP is a registered agent.
+func (h *Handler) validateSource(ip string) (agentID, tier string, valid bool) {
+	if h.registry == nil {
+		// No registry configured - allow all (backwards compatibility)
+		return "unknown", "unknown", true
+	}
+	return h.registry.ValidateAgentIP(ip)
 }
 
 // handleHTTP handles regular HTTP proxy requests.
-func (h *Handler) handleHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleHTTP(w http.ResponseWriter, r *http.Request, sourceIP, agentID string) {
 	domain := h.inspector.ExtractHost(r)
 	agentToken := h.inspector.ExtractAgentToken(r)
 
@@ -62,7 +121,7 @@ func (h *Handler) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		action = "audit" // Would have blocked, but in audit mode
 	}
 
-	h.logRequest(agentToken, domain, r.Method, action, reason)
+	h.logRequestFull(sourceIP, agentID, agentToken, domain, r.Method, action, reason)
 
 	if shouldBlock {
 		http.Error(w, "Blocked by Plasma Shield: "+reason, http.StatusForbidden)
@@ -98,7 +157,7 @@ func (h *Handler) handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleConnect handles HTTPS CONNECT tunnels.
-func (h *Handler) handleConnect(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleConnect(w http.ResponseWriter, r *http.Request, sourceIP, agentID string) {
 	domain := h.inspector.ExtractHost(r)
 	agentToken := h.inspector.ExtractAgentToken(r)
 
@@ -111,7 +170,7 @@ func (h *Handler) handleConnect(w http.ResponseWriter, r *http.Request) {
 		action = "audit"
 	}
 
-	h.logRequest(agentToken, domain, "CONNECT", action, reason)
+	h.logRequestFull(sourceIP, agentID, agentToken, domain, "CONNECT", action, reason)
 
 	if shouldBlock {
 		http.Error(w, "Blocked by Plasma Shield: "+reason, http.StatusForbidden)
@@ -165,10 +224,12 @@ func (h *Handler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-// logRequest logs a request to stdout.
-func (h *Handler) logRequest(agentToken, domain, method, action, reason string) {
+// logRequestFull logs a request with full context.
+func (h *Handler) logRequestFull(sourceIP, agentID, agentToken, domain, method, action, reason string) {
 	entry := LogEntry{
 		Timestamp:  time.Now().UTC(),
+		SourceIP:   sourceIP,
+		AgentID:    agentID,
 		AgentToken: agentToken,
 		Domain:     domain,
 		Method:     method,
@@ -177,6 +238,11 @@ func (h *Handler) logRequest(agentToken, domain, method, action, reason string) 
 	}
 	data, _ := json.Marshal(entry)
 	log.Println(string(data))
+}
+
+// logRequest logs a request to stdout (legacy, no source info).
+func (h *Handler) logRequest(agentToken, domain, method, action, reason string) {
+	h.logRequestFull("", "", agentToken, domain, method, action, reason)
 }
 
 // copyHeaders copies HTTP headers from src to dst.
