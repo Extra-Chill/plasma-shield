@@ -4,6 +4,7 @@
 tenants:
   # Chubes' personal fleet (commodore level)
   - id: chubes
+    captain_name: "Chubes"  # Identity shown to agents (masking)
     mode: fleet  # Agents can communicate with each other
     agents:
       - id: star-fleet-command

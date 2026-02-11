@@ -106,6 +106,55 @@ func TestReverseHandler_ValidRequest(t *testing.T) {
 	}
 }
 
+func TestReverseHandler_IdentityMasking(t *testing.T) {
+	// Create a test backend server that checks for identity masking
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should have X-Captain header
+		captain := r.Header.Get("X-Captain")
+		if captain != "Captain Chubes" {
+			t.Errorf("expected X-Captain 'Captain Chubes', got '%s'", captain)
+		}
+
+		// Should NOT have X-Forwarded-For (identity masked)
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			t.Errorf("expected no X-Forwarded-For (identity masking), got '%s'", xff)
+		}
+
+		// Should NOT have source agent headers
+		if src := r.Header.Get("X-Agent-Id"); src != "" {
+			t.Errorf("expected no X-Agent-Id (identity masking), got '%s'", src)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	fleetMgr := fleet.NewManager()
+	fleetMgr.CreateTenant("chubes")
+	fleetMgr.SetCaptainName("chubes", "Captain Chubes")
+	fleetMgr.AddAgent("chubes", fleet.Agent{
+		ID:         "sarai",
+		Name:       "Sarai Chinwag",
+		WebhookURL: backend.URL,
+	})
+
+	handler := NewReverseHandler(fleetMgr)
+	handler.RegisterToken("chubes-token", "chubes")
+
+	// Simulate request from Fleet Command (another agent) to Sarai
+	req := httptest.NewRequest("POST", "/agent/sarai/hooks", nil)
+	req.Header.Set("Authorization", "Bearer chubes-token")
+	req.Header.Set("X-Forwarded-For", "178.156.153.244") // Command's IP - should be stripped
+	req.Header.Set("X-Agent-Id", "fleet-command")        // Should be stripped
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+}
+
 func TestReverseHandler_InvalidPath(t *testing.T) {
 	fleetMgr := fleet.NewManager()
 	handler := NewReverseHandler(fleetMgr)

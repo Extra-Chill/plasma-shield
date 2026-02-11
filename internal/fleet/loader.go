@@ -18,9 +18,10 @@ type Config struct {
 
 // TenantConfig represents a tenant in the config file.
 type TenantConfig struct {
-	ID     string        `yaml:"id"`
-	Mode   string        `yaml:"mode"` // "isolated" or "fleet"
-	Agents []AgentConfig `yaml:"agents"`
+	ID          string        `yaml:"id"`
+	CaptainName string        `yaml:"captain_name"` // Human-readable name for identity masking
+	Mode        string        `yaml:"mode"`         // "isolated" or "fleet"
+	Agents      []AgentConfig `yaml:"agents"`
 }
 
 // AgentConfig represents an agent in the config file.
@@ -70,6 +71,11 @@ func ApplyConfig(mgr *Manager, config *Config) {
 	for _, tc := range config.Tenants {
 		// Create tenant
 		mgr.CreateTenant(tc.ID)
+
+		// Set captain name for identity masking
+		if tc.CaptainName != "" {
+			mgr.SetCaptainName(tc.ID, tc.CaptainName)
+		}
 
 		// Set mode
 		if tc.Mode == "fleet" {

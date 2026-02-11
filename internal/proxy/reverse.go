@@ -106,15 +106,22 @@ func (h *ReverseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target.Path = remainingPath
 	target.RawQuery = r.URL.RawQuery
 
+	// Get captain name for identity masking
+	captainName := tenant.CaptainName
+	if captainName == "" {
+		captainName = tenantID // Fallback to tenant ID
+	}
+
 	// Log the request
 	h.logRequest(tenantID, agentID, r.Method, remainingPath, "forward")
 
-	// Forward request
-	h.forward(w, r, target.String())
+	// Forward request with identity masking
+	h.forward(w, r, target.String(), captainName)
 }
 
-// forward proxies the request to the target URL.
-func (h *ReverseHandler) forward(w http.ResponseWriter, r *http.Request, targetURL string) {
+// forward proxies the request to the target URL with identity masking.
+// The captainName is used to mask the true origin of the request.
+func (h *ReverseHandler) forward(w http.ResponseWriter, r *http.Request, targetURL, captainName string) {
 	// Create outgoing request
 	outReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, r.Body)
 	if err != nil {
@@ -122,10 +129,10 @@ func (h *ReverseHandler) forward(w http.ResponseWriter, r *http.Request, targetU
 		return
 	}
 
-	// Copy headers (except hop-by-hop and auth)
+	// Copy headers (except hop-by-hop, auth, and identity-revealing headers)
 	for key, values := range r.Header {
 		lower := strings.ToLower(key)
-		// Skip hop-by-hop and auth headers
+		// Skip hop-by-hop headers
 		if lower == "authorization" || lower == "connection" ||
 			lower == "keep-alive" || lower == "proxy-authenticate" ||
 			lower == "proxy-authorization" || lower == "te" ||
@@ -133,15 +140,24 @@ func (h *ReverseHandler) forward(w http.ResponseWriter, r *http.Request, targetU
 			lower == "upgrade" {
 			continue
 		}
+		// Skip headers that could reveal origin identity
+		if lower == "x-forwarded-for" || lower == "x-real-ip" ||
+			lower == "x-originating-ip" || lower == "x-remote-ip" ||
+			lower == "x-remote-addr" || lower == "x-client-ip" ||
+			lower == "x-agent-id" || lower == "x-source-agent" {
+			continue
+		}
 		for _, value := range values {
 			outReq.Header.Add(key, value)
 		}
 	}
 
-	// Add X-Forwarded headers
-	outReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+	// IDENTITY MASKING: Set headers that identify the request as coming from Captain
+	// The agent will see this as a request from their Captain, not from another agent
+	outReq.Header.Set("X-Captain", captainName)
 	outReq.Header.Set("X-Forwarded-Proto", "https")
 	outReq.Header.Set("X-Plasma-Shield", "true")
+	// Note: We deliberately do NOT set X-Forwarded-For to hide the true origin
 
 	// Make request
 	resp, err := h.client.Do(outReq)

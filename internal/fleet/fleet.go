@@ -27,9 +27,10 @@ type Agent struct {
 
 // Tenant represents a customer/user with their fleet configuration.
 type Tenant struct {
-	ID     string           `json:"id"`
-	Mode   Mode             `json:"mode"`
-	Agents map[string]Agent `json:"agents"`
+	ID          string           `json:"id"`
+	CaptainName string           `json:"captain_name,omitempty"` // Human-readable name for identity masking
+	Mode        Mode             `json:"mode"`
+	Agents      map[string]Agent `json:"agents"`
 }
 
 // Manager handles fleet configuration and inter-agent communication rules.
@@ -97,6 +98,37 @@ func (m *Manager) GetTenant(tenantID string) *Tenant {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tenants[tenantID]
+}
+
+// SetCaptainName sets the captain name for identity masking.
+func (m *Manager) SetCaptainName(tenantID, name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	tenant, exists := m.tenants[tenantID]
+	if !exists {
+		tenant = &Tenant{
+			ID:          tenantID,
+			CaptainName: name,
+			Mode:        Isolated,
+			Agents:      make(map[string]Agent),
+		}
+		m.tenants[tenantID] = tenant
+	} else {
+		tenant.CaptainName = name
+	}
+}
+
+// GetCaptainName returns the captain name for a tenant.
+func (m *Manager) GetCaptainName(tenantID string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	tenant, exists := m.tenants[tenantID]
+	if !exists {
+		return ""
+	}
+	return tenant.CaptainName
 }
 
 // GetTenantForAgent returns the tenant ID for an agent.
