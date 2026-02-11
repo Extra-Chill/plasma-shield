@@ -98,10 +98,35 @@ It does NOT protect against:
 
 | Component | Description |
 |-----------|-------------|
-| `plasma-shield-router` | Proxy service that inspects and filters traffic |
+| `plasma-shield-gateway` | Full gateway: forward proxy (outbound) + reverse proxy (inbound) |
+| `plasma-shield-router` | Forward proxy only (legacy, use gateway for production) |
 | `plasma-shield` | CLI for human operators |
 | Web Dashboard | Embedded UI at `localhost:9000` (via SSH tunnel) |
 | `lockdown.sh` | Script to configure agent iptables |
+
+## Traffic Flow
+
+All traffic flows through the shield:
+
+```
+                    ┌─────────────────────┐
+                    │   Plasma Shield     │
+     Captain ──────►│      Gateway        │◄────── External Traffic
+                    │                     │
+                    │  :8080 (outbound)   │
+                    │  :8443 (inbound)    │
+                    └──────────┬──────────┘
+                               │
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+           ▼                   ▼                   ▼
+        [Agent 1]          [Agent 2]           [Agent N]
+      (no public IP)     (no public IP)      (no public IP)
+```
+
+- **Outbound**: Agents use shield as HTTP_PROXY
+- **Inbound**: External traffic routes through shield to agents
+- **Agents have no public endpoints** - invisible to outside world
 
 ## Quick Start
 

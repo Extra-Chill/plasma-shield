@@ -1,9 +1,12 @@
-.PHONY: build build-router build-cli clean test
+.PHONY: build build-gateway build-router build-cli clean test
 
 VERSION ?= 0.1.0
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
-build: build-router build-cli
+build: build-gateway build-cli
+
+build-gateway:
+	go build $(LDFLAGS) -o dist/plasma-shield-gateway ./cmd/gateway
 
 build-router:
 	go build $(LDFLAGS) -o dist/plasma-shield-router ./cmd/proxy

@@ -1,0 +1,37 @@
+# Plasma Shield Fleet Configuration
+# This file defines tenants, agents, and access tokens.
+
+tenants:
+  # Chubes' personal fleet (commodore level)
+  - id: chubes
+    mode: fleet  # Agents can communicate with each other
+    agents:
+      - id: star-fleet-command
+        name: "Star Fleet Command"
+        ip: "178.156.153.244"
+        webhook_url: "http://178.156.153.244:18789"
+        tier: commodore
+        description: "Fleet orchestration and coordination"
+
+      - id: sarai-chinwag
+        name: "Sarai Chinwag"
+        ip: "178.156.229.129"
+        webhook_url: "http://178.156.229.129:18789"
+        tier: crew
+        description: "Manages saraichinwag.com"
+
+# Access tokens for inbound requests
+# Each token grants access to a specific tenant's agents
+tokens:
+  - token: "${SHIELD_CHUBES_TOKEN}"  # Set via environment
+    tenant_id: chubes
+    name: "Chubes API Access"
+
+# Spawn customers would be added as separate tenants:
+#  - id: spawn-customer-123
+#    mode: isolated  # Customer's agents can't see each other
+#    agents:
+#      - id: customer-agent-1
+#        name: "Customer Site"
+#        ip: "x.x.x.x"
+#        tier: crew

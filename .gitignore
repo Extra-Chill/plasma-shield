@@ -24,3 +24,4 @@ Thumbs.db
 /config/local.yaml
 *.pem
 *.key
+/gateway
