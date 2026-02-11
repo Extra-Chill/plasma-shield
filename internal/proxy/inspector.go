@@ -48,15 +48,23 @@ func (i *Inspector) ExtractAgentToken(r *http.Request) string {
 	return r.Header.Get("X-Agent-Token")
 }
 
+// ExtractAgentTier extracts the agent tier from request headers.
+// Set by the handler after IP validation.
+func (i *Inspector) ExtractAgentTier(r *http.Request) string {
+	return r.Header.Get("X-Agent-Tier")
+}
+
 // CheckRequest checks if a request should be blocked.
 // Returns (shouldBlock, ruleMatched, reason).
 // Respects the current mode (audit = never block, lockdown = always block).
+// Uses X-Agent-Tier header for tier-aware rule checking.
 func (i *Inspector) CheckRequest(r *http.Request) (shouldBlock bool, ruleMatched bool, reason string) {
 	agentID := i.ExtractAgentToken(r)
+	agentTier := i.ExtractAgentTier(r)
 	host := i.ExtractHost(r)
 
-	// Check if domain matches any blocking rule
-	allowed, matchedRule, ruleReason := i.engine.CheckDomain(host)
+	// Check if domain matches any blocking rule (tier-aware)
+	allowed, matchedRule, ruleReason := i.engine.CheckDomainWithTier(host, agentTier)
 	ruleMatched = !allowed
 
 	// Determine if we should actually block based on mode
@@ -78,9 +86,9 @@ func (i *Inspector) CheckRequest(r *http.Request) (shouldBlock bool, ruleMatched
 	modeStr := string(i.modeManager.AgentMode(agentID))
 	if ruleMatched {
 		if shouldBlock {
-			log.Printf("[%s] BLOCK %s (agent=%s, rule=%s)", modeStr, host, agentID, ruleID)
+			log.Printf("[%s] BLOCK %s (agent=%s, tier=%s, rule=%s)", modeStr, host, agentID, agentTier, ruleID)
 		} else {
-			log.Printf("[%s] AUDIT %s (agent=%s, would block: rule=%s)", modeStr, host, agentID, ruleID)
+			log.Printf("[%s] AUDIT %s (agent=%s, tier=%s, would block: rule=%s)", modeStr, host, agentID, agentTier, ruleID)
 		}
 	}
 

@@ -8,12 +8,48 @@ import (
 
 // Rule defines a single filtering rule.
 type Rule struct {
-	ID          string `yaml:"id"`
-	Pattern     string `yaml:"pattern,omitempty"`     // Command pattern to match (glob syntax)
-	Domain      string `yaml:"domain,omitempty"`      // Domain pattern to match
-	Action      string `yaml:"action"`                // "block" or "allow"
-	Description string `yaml:"description,omitempty"` // Human-readable description
-	Enabled     bool   `yaml:"enabled"`
+	ID          string   `yaml:"id"`
+	Pattern     string   `yaml:"pattern,omitempty"`     // Command pattern to match (glob syntax)
+	Domain      string   `yaml:"domain,omitempty"`      // Domain pattern to match
+	Action      string   `yaml:"action"`                // "block" or "allow"
+	Description string   `yaml:"description,omitempty"` // Human-readable description
+	Tiers       []string `yaml:"tiers,omitempty"`       // Tiers this rule applies to (empty = all)
+	Enabled     bool     `yaml:"enabled"`
+}
+
+// appliesToTier checks if a rule applies to a given tier.
+// If rule has no tiers specified, it applies to all tiers.
+// Commodore tier is exempt from all restrictive rules by default.
+func (r *Rule) appliesToTier(tier string) bool {
+	// Commodore is exempt from blocking rules (unless explicitly included)
+	if tier == "commodore" && r.Action == "block" {
+		// Check if commodore is explicitly in the tiers list
+		for _, t := range r.Tiers {
+			if t == "commodore" {
+				return true
+			}
+		}
+		// Commodore not in list and rule blocks - exempt
+		if len(r.Tiers) > 0 {
+			return false
+		}
+		// No tiers specified, commodore still exempt from blocks
+		return false
+	}
+
+	// If no tiers specified, rule applies to everyone
+	if len(r.Tiers) == 0 {
+		return true
+	}
+
+	// Check if tier is in the list
+	for _, t := range r.Tiers {
+		if t == tier {
+			return true
+		}
+	}
+
+	return false
 }
 
 // RuleSet is a collection of rules.
@@ -127,11 +163,17 @@ func (e *Engine) RuleCount() int {
 }
 
 // CheckCommand evaluates a command against the ruleset.
+// Deprecated: Use CheckCommandWithTier for tier-aware checking.
+func (e *Engine) CheckCommand(command string) (allowed bool, matchedRule *Rule, reason string) {
+	return e.CheckCommandWithTier(command, "")
+}
+
+// CheckCommandWithTier evaluates a command against the ruleset with tier awareness.
 // Returns:
 //   - allowed: true if the command is allowed, false if blocked
 //   - matchedRule: the rule that matched (nil if no match)
 //   - reason: human-readable explanation
-func (e *Engine) CheckCommand(command string) (allowed bool, matchedRule *Rule, reason string) {
+func (e *Engine) CheckCommandWithTier(command, tier string) (allowed bool, matchedRule *Rule, reason string) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -140,6 +182,10 @@ func (e *Engine) CheckCommand(command string) (allowed bool, matchedRule *Rule, 
 			continue
 		}
 		if cr.Rule.Pattern == "" {
+			continue
+		}
+		// Skip rules that don't apply to this tier
+		if tier != "" && !cr.Rule.appliesToTier(tier) {
 			continue
 		}
 		if cr.MatchCommand(command) {
@@ -159,11 +205,17 @@ func (e *Engine) CheckCommand(command string) (allowed bool, matchedRule *Rule, 
 }
 
 // CheckDomain evaluates a domain against the ruleset.
+// Deprecated: Use CheckDomainWithTier for tier-aware checking.
+func (e *Engine) CheckDomain(domain string) (allowed bool, matchedRule *Rule, reason string) {
+	return e.CheckDomainWithTier(domain, "")
+}
+
+// CheckDomainWithTier evaluates a domain against the ruleset with tier awareness.
 // Returns:
 //   - allowed: true if the domain is allowed, false if blocked
 //   - matchedRule: the rule that matched (nil if no match)
 //   - reason: human-readable explanation
-func (e *Engine) CheckDomain(domain string) (allowed bool, matchedRule *Rule, reason string) {
+func (e *Engine) CheckDomainWithTier(domain, tier string) (allowed bool, matchedRule *Rule, reason string) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -172,6 +224,10 @@ func (e *Engine) CheckDomain(domain string) (allowed bool, matchedRule *Rule, re
 			continue
 		}
 		if cr.Rule.Domain == "" {
+			continue
+		}
+		// Skip rules that don't apply to this tier
+		if tier != "" && !cr.Rule.appliesToTier(tier) {
 			continue
 		}
 		if cr.MatchDomain(domain) {
