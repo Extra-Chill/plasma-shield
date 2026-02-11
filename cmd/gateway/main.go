@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Extra-Chill/plasma-shield/internal/bastion"
 	"github.com/Extra-Chill/plasma-shield/internal/fleet"
 	"github.com/Extra-Chill/plasma-shield/internal/mode"
 	"github.com/Extra-Chill/plasma-shield/internal/proxy"
@@ -22,6 +23,7 @@ func main() {
 	// Flags
 	outboundPort := flag.String("outbound", ":8080", "Forward proxy port (outbound agent traffic)")
 	inboundPort := flag.String("inbound", ":8443", "Reverse proxy port (inbound to agents)")
+	bastionAddr := flag.String("bastion", "", "SSH bastion address (disabled if empty)")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate file for inbound HTTPS")
 	tlsKey := flag.String("tls-key", "", "TLS private key file for inbound HTTPS")
 	rulesFile := flag.String("rules", "", "Rules file (YAML)")
@@ -60,6 +62,28 @@ func main() {
 
 	// Create forward handler with agent registry for IP validation
 	forwardHandler := proxy.NewHandler(inspector, proxy.WithAgentRegistry(fleetMgr))
+
+	// Initialize SSH bastion (if enabled)
+	var bastionServer *bastion.Server
+	if *bastionAddr != "" {
+		bastionLogStore := bastion.NewLogStore(bastion.DefaultLogLimit)
+		bastionLogger := bastion.NewLogger(bastionLogStore)
+		bastionGrantStore := bastion.NewGrantStore("bastion_grants.json")
+
+		server, err := bastion.NewServer(bastion.Config{
+			Addr:       *bastionAddr,
+			Logger:     bastionLogger,
+			GrantStore: bastionGrantStore,
+		})
+		if err != nil {
+			log.Fatalf("Failed to initialize bastion: %v", err)
+		}
+		if err := server.Start(); err != nil {
+			log.Fatalf("Failed to start bastion: %v", err)
+		}
+		bastionServer = server
+		log.Printf("SSH bastion listening on %s", bastionServer.Addr())
+	}
 
 	// Create servers
 	outboundServer := &http.Server{
@@ -118,6 +142,9 @@ func main() {
 	log.Println("Plasma Shield Gateway running")
 	log.Println("  Outbound (forward proxy):", *outboundPort)
 	log.Println("  Inbound (reverse proxy):", *inboundPort, "TLS:", tlsStatus)
+	if bastionServer != nil {
+		log.Println("  SSH bastion:", bastionServer.Addr())
+	}
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -130,6 +157,9 @@ func main() {
 
 	outboundServer.Shutdown(ctx)
 	inboundServer.Shutdown(ctx)
+	if bastionServer != nil {
+		bastionServer.Close()
+	}
 	log.Println("Shutdown complete")
 }
 
