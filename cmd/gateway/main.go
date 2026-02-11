@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"log"
 	"net/http"
@@ -21,6 +22,8 @@ func main() {
 	// Flags
 	outboundPort := flag.String("outbound", ":8080", "Forward proxy port (outbound agent traffic)")
 	inboundPort := flag.String("inbound", ":8443", "Reverse proxy port (inbound to agents)")
+	tlsCert := flag.String("tls-cert", "", "TLS certificate file for inbound HTTPS")
+	tlsKey := flag.String("tls-key", "", "TLS private key file for inbound HTTPS")
 	rulesFile := flag.String("rules", "", "Rules file (YAML)")
 	agentsFile := flag.String("agents", "/etc/plasma-shield/agents.yaml", "Agents/fleet config file")
 	flag.Parse()
@@ -71,6 +74,15 @@ func main() {
 		Handler:      reverseHandler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			},
+		},
 	}
 
 	// Start servers
@@ -82,15 +94,30 @@ func main() {
 	}()
 
 	go func() {
-		log.Printf("Reverse proxy (inbound) listening on %s", *inboundPort)
-		if err := inboundServer.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("Reverse proxy error: %v", err)
+		if *tlsCert != "" && *tlsKey != "" {
+			// TLS enabled for inbound
+			log.Printf("Reverse proxy (inbound) listening on %s with TLS", *inboundPort)
+			if err := inboundServer.ListenAndServeTLS(*tlsCert, *tlsKey); err != http.ErrServerClosed {
+				log.Fatalf("Reverse proxy TLS error: %v", err)
+			}
+		} else {
+			// Plain HTTP (not recommended for production)
+			log.Printf("WARNING: Reverse proxy (inbound) listening on %s WITHOUT TLS", *inboundPort)
+			log.Printf("WARNING: Bearer tokens will be transmitted in plain text!")
+			log.Printf("WARNING: Use --tls-cert and --tls-key for production")
+			if err := inboundServer.ListenAndServe(); err != http.ErrServerClosed {
+				log.Fatalf("Reverse proxy error: %v", err)
+			}
 		}
 	}()
 
+	tlsStatus := "disabled (WARNING: insecure)"
+	if *tlsCert != "" && *tlsKey != "" {
+		tlsStatus = "enabled"
+	}
 	log.Println("Plasma Shield Gateway running")
 	log.Println("  Outbound (forward proxy):", *outboundPort)
-	log.Println("  Inbound (reverse proxy):", *inboundPort)
+	log.Println("  Inbound (reverse proxy):", *inboundPort, "TLS:", tlsStatus)
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)

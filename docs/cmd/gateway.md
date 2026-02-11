@@ -27,8 +27,26 @@ plasma-shield-gateway \
 |------|---------|-------------|
 | `--outbound` | `:8080` | Forward proxy port (outbound agent traffic) |
 | `--inbound` | `:8443` | Reverse proxy port (inbound to agents) |
+| `--tls-cert` | (none) | TLS certificate file for HTTPS (required for production) |
+| `--tls-key` | (none) | TLS private key file for HTTPS (required for production) |
 | `--agents` | `/etc/plasma-shield/agents.yaml` | Fleet configuration file |
 | `--rules` | (none) | Rules file for filtering |
+
+## TLS Configuration
+
+**Production deployments MUST use TLS** for the inbound proxy. Bearer tokens are transmitted in the Authorization header - without TLS, they're visible to network sniffers.
+
+```bash
+# Generate self-signed cert (for testing only)
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+
+# Run with TLS
+plasma-shield-gateway \
+  --tls-cert /etc/plasma-shield/cert.pem \
+  --tls-key /etc/plasma-shield/key.pem
+```
+
+For production, use certificates from Let's Encrypt or your organization's CA.
 
 ## Configuration
 
