@@ -4,14 +4,16 @@
 # Higher tiers have more permissions (fewer restrictions).
 
 tiers:
-  # COMMODORE: Infrastructure administrators
-  # Full access to cloud APIs, can provision, manage shield
+  # COMMODORE: Fleet orchestration AI
+  # Broad internet access, can coordinate fleet — but CANNOT access the shield
+  # The shield is invisible to the Commodore. It does not know it exists.
   commodore:
-    description: "Infrastructure administrators with full access"
+    description: "Fleet orchestration AI with broad network access (shield-unaware)"
     cloud_apis: allow      # Can call Hetzner, AWS, GCP, etc.
     inter_agent: allow     # Can communicate with any agent
     shell_services: allow  # Can use ngrok, tunnels (for debugging)
-    priority: 100          # Higher = more permissive
+    shield_access: deny    # Cannot access, perceive, or disable the shield
+    priority: 100          # Higher = more permissive (network only, not shield)
     
   # CAPTAIN: Fleet commanders  
   # Can orchestrate their fleet, no cloud API access

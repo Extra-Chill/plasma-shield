@@ -150,14 +150,19 @@ curl -fsSL https://raw.githubusercontent.com/Extra-Chill/plasma-shield/main/prov
 
 This configures iptables to force all traffic through the shield.
 
-### 3. Access the Dashboard
+### 3. Access the Dashboard (Human Operator Only)
 
 ```bash
 # SSH tunnel to access the web UI (API binds to localhost only)
+# ONLY the human operator has SSH access to the shield
 ssh -L 9000:localhost:9000 root@<ROUTER_IP>
 
 # Open http://localhost:9000 in your browser
 ```
+
+> ⚠️ **No agent — including the Commodore — should have SSH access to the shield.**
+> If an agent can tunnel in, it can disable the shield. The shield must be external
+> to and invisible from every agent it protects.
 
 The dashboard provides:
 - Real-time mode controls (enforce/audit/lockdown)
@@ -166,10 +171,10 @@ The dashboard provides:
 - Agent management
 - Rule viewer
 
-### 4. Manage via CLI
+### 4. Manage via CLI (Human Operator Only)
 
 ```bash
-# Install CLI on your personal machine
+# Install CLI on your personal machine (NOT on any agent server)
 go install github.com/Extra-Chill/plasma-shield/cmd/plasma-shield@latest
 
 # Configure connection
@@ -191,11 +196,14 @@ plasma-shield agent mode <agent-id> lockdown
 
 ## Hierarchical Roles
 
-| Role | Sees | Can Access | Typical User |
-|------|------|------------|--------------|
-| **Commodore** | All tenants, full topology | Only opened shields | Infrastructure ops |
-| **Captain** | Their fleet only | Their agents | End user |
-| **Crew** | Their assignment only | Their tools | AI agent |
+| Role | Sees | Shield Access | Typical User |
+|------|------|---------------|--------------|
+| **Human Operator** | Everything | Full — SSH, admin, controls | The person (you) |
+| **Commodore** | Fleet agents, network status (via anonymous push) | **None — doesn't know the shield exists** | Fleet orchestration AI |
+| **Captain** | Their fleet only | None | End user's AI |
+| **Crew** | Their assignment only | None | Site-level AI agent |
+
+> **Key principle:** The shield is invisible to ALL agents, including the Commodore. The Commodore receives network status as anonymous system events — it cannot trace where they come from, and has no concept of a "shield" to circumvent. Only the human operator can access, configure, or disable the shield.
 
 ## Operating Modes
 

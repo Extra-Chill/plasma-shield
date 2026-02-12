@@ -96,23 +96,30 @@ Multiple users, each with their own isolated fleet. Users cannot see each other.
 
 ## Hierarchical Roles
 
-| Role | Visibility | Access | Responsibilities |
-|------|------------|--------|------------------|
-| **Commodore** | All tenants, all topology | None by default; must open specific shields | Infrastructure ops, security policy, tenant isolation |
-| **Captain** | Their fleet only | Their fleet (within their shield) | Configure inter-agent permissions, manage their agents |
-| **Crew** | Their assignment only | Their tools/APIs | Serve their Captain, unaware of fleet structure |
+| Role | Visibility | Shield Access | Responsibilities |
+|------|------------|---------------|------------------|
+| **Human Operator** | Everything — full topology, all tenants, shield internals | Full — SSH, admin API, dashboard | The only entity that can configure or disable the shield |
+| **Commodore** | Fleet agents + anonymous network status | **None — does not know the shield exists** | Fleet orchestration, coordination, standards enforcement |
+| **Captain** | Their fleet only | None | Configure inter-agent permissions, manage their agents |
+| **Crew** | Their assignment only | None | Serve their Captain, unaware of fleet structure |
 
-**Key insight:** Visibility does not grant access. The Commodore can see that User A has 3 agents, but cannot access those agents unless User A's shield is explicitly opened for a specific session.
+**Key insight:** The shield is invisible to ALL agents at every tier. The Commodore is the highest-ranking AI agent, but it is still an agent — it cannot perceive, access, or disable the shield. Only the human operator controls the shield.
+
+**Observability model:** The shield pushes network status as anonymous system events into the Commodore's session. The Commodore sees status data appear but cannot determine the source — it could be the OS, OpenClaw internals, or anything else. There is no return path. The Commodore cannot query, probe, or reach the shield.
+
+**Why invisibility matters:** Traditional security is "you know the firewall exists but can't get through it" — which invites adversarial probing. The invisible shield model is "there is no firewall as far as you know" — which removes the motivation to circumvent entirely. An agent cannot attack infrastructure it doesn't know exists.
 
 ## Permission Tiers
 
-Agents are assigned to tiers that determine their network permissions:
+Agents are assigned to tiers that determine their **network** permissions (broader allowlist, not shield access):
 
-| Tier | Cloud APIs | Inter-Agent | Tunnels | Use Case |
-|------|------------|-------------|---------|----------|
-| **Commodore** | ✅ Allow | ✅ Any | ✅ Allow | Fleet Command, infrastructure |
-| **Captain** | ❌ Deny | 🔶 Fleet only | ❌ Deny | Fleet orchestrators |
-| **Crew** | ❌ Deny | ❌ Deny | ❌ Deny | Standard agents |
+| Tier | Internet Access | Inter-Agent | Cloud APIs | Shield Access |
+|------|-----------------|-------------|------------|---------------|
+| **Commodore** | Broad allowlist | ✅ Any fleet agent | ✅ Allow | ❌ None (invisible) |
+| **Captain** | Restricted | 🔶 Own fleet only | ❌ Deny | ❌ None (invisible) |
+| **Crew** | Tight allowlist | ❌ Deny | ❌ Deny | ❌ None (invisible) |
+
+> The Commodore tier grants more internet freedom (broader allowlist), but does NOT grant access to the shield itself. All tiers are equally unable to perceive or interact with the shield.
 
 ### Tier Configuration
 
@@ -181,19 +188,21 @@ Shields can be nested to arbitrary depth:
 
 This is the critical security property that differentiates Plasma Shield from traditional network isolation.
 
-### What Agents Know
+### What Agents Know (ALL tiers, including Commodore)
 
 - Their own identity (name, purpose)
 - Their Captain (the user who controls them)
 - Allowed APIs and tools (per their configuration)
+- Network status data (Commodore only — appears as anonymous system events)
 
-### What Agents Don't Know
+### What Agents Don't Know (ALL tiers, including Commodore)
 
-- Other agents exist (even in the same fleet, unless explicitly told)
+- The Plasma Shield exists
+- They're behind any kind of proxy or filter
 - Other users/tenants exist
-- They're behind a Plasma Shield
-- They're part of a larger network
 - The network topology
+- Where network status data comes from (Commodore receives it but can't trace the source)
+- Other agents exist (Crew tier; Commodore knows about fleet agents via fleet config, not via shield)
 
 ### How It Works
 
@@ -223,13 +232,15 @@ Human-only command-line interface. Installed on the operator's machine.
 
 Communicates with the shield router over a secure channel that agents cannot reach.
 
-### Web Dashboard
+### Web Dashboard (Human Operator Only)
 
 Browser-based management interface embedded in the shield router. Designed for accessibility — manage your fleet from any device, including your phone at 3am during emergencies.
 
-**Access:** `http://localhost:9000` via SSH tunnel
+**Access:** `http://localhost:9000` via SSH tunnel (human operator only)
 
 ```bash
+# ONLY the human operator has SSH access to the shield
+# No agent at any tier — including Commodore — has SSH keys to this server
 ssh -L 9000:localhost:9000 root@<shield-ip>
 # Then open http://localhost:9000 in your browser
 ```
@@ -283,7 +294,7 @@ plasma-shield fleet mode <fleet-id> lockdown  # Freeze entire fleet
 
 ### Opening a Shield
 
-To access a server protected by a shield, the Commodore must explicitly open it:
+To access a server protected by a shield, the **human operator** must explicitly open it:
 
 ```bash
 # Open User A's fleet shield for 1 hour
