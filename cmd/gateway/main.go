@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Extra-Chill/plasma-shield/internal/api"
 	"github.com/Extra-Chill/plasma-shield/internal/bastion"
 	"github.com/Extra-Chill/plasma-shield/internal/fleet"
 	"github.com/Extra-Chill/plasma-shield/internal/mode"
@@ -25,12 +26,19 @@ func main() {
 	outboundPort := flag.String("outbound", ":8080", "Forward proxy port (outbound agent traffic)")
 	inboundPort := flag.String("inbound", ":8443", "Reverse proxy port (inbound to agents)")
 	bastionAddr := flag.String("bastion", "", "SSH bastion address (disabled if empty)")
+	adminAddr := flag.String("admin", "", "Admin API address, localhost only (disabled if empty, e.g. 127.0.0.1:9000)")
+	adminToken := flag.String("admin-token", "", "Bearer token for admin API (env: PLASMA_ADMIN_TOKEN)")
 	dataDir := flag.String("data-dir", "/var/lib/plasma-shield", "Directory for persistent state (keys, grants)")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate file for inbound HTTPS")
 	tlsKey := flag.String("tls-key", "", "TLS private key file for inbound HTTPS")
 	rulesFile := flag.String("rules", "", "Rules file (YAML)")
 	agentsFile := flag.String("agents", "/etc/plasma-shield/agents.yaml", "Agents/fleet config file")
 	flag.Parse()
+
+	// Allow admin token from env if not set via flag
+	if *adminToken == "" {
+		*adminToken = os.Getenv("PLASMA_ADMIN_TOKEN")
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	log.Println("Plasma Shield Gateway starting...")
@@ -94,6 +102,21 @@ func main() {
 		log.Printf("SSH bastion listening on %s", bastionServer.Addr())
 	}
 
+	// Start admin API (if enabled)
+	var adminServer *api.Server
+	if *adminAddr != "" {
+		adminServer = api.NewServer(api.ServerConfig{
+			Addr:            *adminAddr,
+			ManagementToken: *adminToken,
+		})
+		go func() {
+			if err := adminServer.Start(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Admin API error: %v", err)
+			}
+		}()
+		log.Printf("Admin API listening on %s", *adminAddr)
+	}
+
 	// Create servers
 	outboundServer := &http.Server{
 		Addr:         *outboundPort,
@@ -154,6 +177,9 @@ func main() {
 	if bastionServer != nil {
 		log.Println("  SSH bastion:", bastionServer.Addr())
 	}
+	if adminServer != nil {
+		log.Println("  Admin API:", *adminAddr)
+	}
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -168,6 +194,9 @@ func main() {
 	inboundServer.Shutdown(ctx)
 	if bastionServer != nil {
 		bastionServer.Close()
+	}
+	if adminServer != nil {
+		adminServer.Shutdown(ctx)
 	}
 	log.Println("Shutdown complete")
 }
