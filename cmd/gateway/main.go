@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ func main() {
 	outboundPort := flag.String("outbound", ":8080", "Forward proxy port (outbound agent traffic)")
 	inboundPort := flag.String("inbound", ":8443", "Reverse proxy port (inbound to agents)")
 	bastionAddr := flag.String("bastion", "", "SSH bastion address (disabled if empty)")
+	dataDir := flag.String("data-dir", "/var/lib/plasma-shield", "Directory for persistent state (keys, grants)")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate file for inbound HTTPS")
 	tlsKey := flag.String("tls-key", "", "TLS private key file for inbound HTTPS")
 	rulesFile := flag.String("rules", "", "Rules file (YAML)")
@@ -63,17 +65,24 @@ func main() {
 	// Create forward handler with agent registry for IP validation
 	forwardHandler := proxy.NewHandler(inspector, proxy.WithAgentRegistry(fleetMgr))
 
+	// Ensure data directory exists
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
+		log.Fatalf("Failed to create data directory %s: %v", *dataDir, err)
+	}
+
 	// Initialize SSH bastion (if enabled)
 	var bastionServer *bastion.Server
 	if *bastionAddr != "" {
 		bastionLogStore := bastion.NewLogStore(bastion.DefaultLogLimit)
 		bastionLogger := bastion.NewLogger(bastionLogStore)
-		bastionGrantStore := bastion.NewGrantStore("bastion_grants.json")
+		bastionGrantStore := bastion.NewGrantStore(filepath.Join(*dataDir, "bastion_grants.json"))
 
 		server, err := bastion.NewServer(bastion.Config{
-			Addr:       *bastionAddr,
-			Logger:     bastionLogger,
-			GrantStore: bastionGrantStore,
+			Addr:        *bastionAddr,
+			HostKeyPath: filepath.Join(*dataDir, "bastion_host_key"),
+			CAKeyPath:   filepath.Join(*dataDir, "bastion_ca_key"),
+			Logger:      bastionLogger,
+			GrantStore:  bastionGrantStore,
 		})
 		if err != nil {
 			log.Fatalf("Failed to initialize bastion: %v", err)

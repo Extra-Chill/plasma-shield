@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,6 +72,7 @@ func main() {
 	proxyAddr := flag.String("proxy-addr", ":8080", "Address for the proxy server")
 	apiAddr := flag.String("api-addr", "127.0.0.1:9000", "Address for the management API and web UI (localhost only)")
 	bastionAddr := flag.String("bastion-addr", "", "Address for the SSH bastion (disabled if empty)")
+	dataDir := flag.String("data-dir", "/var/lib/plasma-shield", "Directory for persistent state (keys, grants)")
 	rulesFile := flag.String("rules", "", "Path to rules YAML file")
 	flag.Parse()
 
@@ -79,10 +81,15 @@ func main() {
 	// Initialize components
 	modeManager := mode.NewManager()
 	fleetManager := fleet.NewManager()
+	// Ensure data directory exists
+	if err := os.MkdirAll(*dataDir, 0700); err != nil {
+		log.Fatalf("Failed to create data directory %s: %v", *dataDir, err)
+	}
+
 	logStore := NewLogStore(1000)
 	bastionLogStore := bastion.NewLogStore(bastion.DefaultLogLimit)
 	bastionLogger := bastion.NewLogger(bastionLogStore)
-	bastionGrantStore := bastion.NewGrantStore("bastion_grants.json")
+	bastionGrantStore := bastion.NewGrantStore(filepath.Join(*dataDir, "bastion_grants.json"))
 	log.Printf("Default mode: %s", modeManager.GlobalMode())
 
 	// Initialize rule engine
@@ -399,9 +406,11 @@ func main() {
 	var bastionServer *bastion.Server
 	if *bastionAddr != "" {
 		server, err := bastion.NewServer(bastion.Config{
-			Addr:       *bastionAddr,
-			Logger:     bastionLogger,
-			GrantStore: bastionGrantStore,
+			Addr:        *bastionAddr,
+			HostKeyPath: filepath.Join(*dataDir, "bastion_host_key"),
+			CAKeyPath:   filepath.Join(*dataDir, "bastion_ca_key"),
+			Logger:      bastionLogger,
+			GrantStore:  bastionGrantStore,
 		})
 		if err != nil {
 			log.Fatalf("Failed to initialize bastion: %v", err)
