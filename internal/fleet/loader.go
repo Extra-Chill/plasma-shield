@@ -16,12 +16,20 @@ type Config struct {
 	Tokens  []TokenConfig  `yaml:"tokens"`
 }
 
+// HostConfig represents a host server with multiple containerized agents.
+type HostConfig struct {
+	ID     string        `yaml:"id"`
+	IP     string        `yaml:"ip"`
+	Agents []AgentConfig `yaml:"agents"`
+}
+
 // TenantConfig represents a tenant in the config file.
 type TenantConfig struct {
 	ID          string        `yaml:"id"`
 	CaptainName string        `yaml:"captain_name"` // Human-readable name for identity masking
 	Mode        string        `yaml:"mode"`         // "isolated" or "fleet"
-	Agents      []AgentConfig `yaml:"agents"`
+	Hosts       []HostConfig  `yaml:"hosts"`        // Multi-tenant: agents grouped by host
+	Agents      []AgentConfig `yaml:"agents"`       // Legacy: standalone agents with their own IPs
 }
 
 // AgentConfig represents an agent in the config file.
@@ -29,6 +37,7 @@ type AgentConfig struct {
 	ID          string `yaml:"id"`
 	Name        string `yaml:"name"`
 	IP          string `yaml:"ip"`
+	ContainerID string `yaml:"container_id"` // Docker container ID/name (for multi-tenant)
 	WebhookURL  string `yaml:"webhook_url"`
 	Tier        string `yaml:"tier"` // "commodore", "captain", "crew"
 	Description string `yaml:"description"`
@@ -84,7 +93,28 @@ func ApplyConfig(mgr *Manager, config *Config) {
 			mgr.SetMode(tc.ID, Isolated)
 		}
 
-		// Add agents
+		// Add agents from hosts (multi-tenant container model)
+		for _, hc := range tc.Hosts {
+			for _, ac := range hc.Agents {
+				tier := ac.Tier
+				if tier == "" {
+					tier = "crew" // Default tier
+				}
+				agent := Agent{
+					ID:          ac.ID,
+					Name:        ac.Name,
+					IP:          hc.IP, // Inherit host IP
+					ContainerID: ac.ContainerID,
+					HostID:      hc.ID,
+					WebhookURL:  ac.WebhookURL,
+					Tier:        tier,
+					Description: ac.Description,
+				}
+				mgr.AddAgent(tc.ID, agent)
+			}
+		}
+
+		// Add standalone agents (legacy format, backward compat)
 		for _, ac := range tc.Agents {
 			tier := ac.Tier
 			if tier == "" {
@@ -94,6 +124,7 @@ func ApplyConfig(mgr *Manager, config *Config) {
 				ID:          ac.ID,
 				Name:        ac.Name,
 				IP:          ac.IP,
+				ContainerID: ac.ContainerID,
 				WebhookURL:  ac.WebhookURL,
 				Tier:        tier,
 				Description: ac.Description,

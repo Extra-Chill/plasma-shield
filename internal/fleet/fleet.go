@@ -20,9 +20,12 @@ type Agent struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	IP          string `json:"ip,omitempty"`
-	WebhookURL  string `json:"webhook_url,omitempty"`
-	Tier        string `json:"tier,omitempty"` // "commodore", "captain", "crew"
+	ContainerID string `json:"container_id,omitempty"` // Docker container ID/name
+	SourcePort  int    `json:"source_port,omitempty"`  // If using port-based routing
+	Tier        string `json:"tier,omitempty"`         // "commodore", "captain", "crew"
 	Description string `json:"description,omitempty"`
+	WebhookURL  string `json:"webhook_url,omitempty"`
+	HostID      string `json:"host_id,omitempty"` // Which host this container is on
 }
 
 // Tenant represents a customer/user with their fleet configuration.
@@ -41,14 +44,17 @@ type Manager struct {
 	agentToTenant map[string]string
 	// ipToAgent maps IP addresses to agent info for fast validation
 	ipToAgent map[string]*Agent
+	// containerToAgent maps container IDs to agent info for container-based routing
+	containerToAgent map[string]*Agent
 }
 
 // NewManager creates a new fleet manager.
 func NewManager() *Manager {
 	return &Manager{
-		tenants:       make(map[string]*Tenant),
-		agentToTenant: make(map[string]string),
-		ipToAgent:     make(map[string]*Agent),
+		tenants:          make(map[string]*Tenant),
+		agentToTenant:    make(map[string]string),
+		ipToAgent:        make(map[string]*Agent),
+		containerToAgent: make(map[string]*Agent),
 	}
 }
 
@@ -70,6 +76,29 @@ func (m *Manager) ValidateAgentIP(ip string) (agentID string, tier string, valid
 	}
 
 	return agent.ID, tier, true
+}
+
+// ValidateAgentContainer checks if a container ID belongs to a registered agent.
+// Returns agent ID, tier, and validity status.
+// This is used for container-based routing where multiple agents share a host IP.
+func (m *Manager) ValidateAgentContainer(hostIP, containerID string) (agentID string, tier string, valid bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// First try direct container ID lookup
+	if containerID != "" {
+		agent, ok := m.containerToAgent[containerID]
+		if ok {
+			tier = agent.Tier
+			if tier == "" {
+				tier = "crew" // Default tier
+			}
+			return agent.ID, tier, true
+		}
+	}
+
+	// Fall back to IP-based lookup for non-containerized agents
+	return m.ValidateAgentIP(hostIP)
 }
 
 // GetAgentByIP returns the agent with the given IP.
@@ -191,6 +220,12 @@ func (m *Manager) AddAgent(tenantID string, agent Agent) {
 		agentCopy := agent // Store copy so pointer remains valid
 		m.ipToAgent[agent.IP] = &agentCopy
 	}
+
+	// Add container lookup if agent has ContainerID
+	if agent.ContainerID != "" {
+		agentCopy := agent // Store copy so pointer remains valid
+		m.containerToAgent[agent.ContainerID] = &agentCopy
+	}
 }
 
 // RemoveAgent removes an agent from a tenant's fleet.
@@ -206,6 +241,11 @@ func (m *Manager) RemoveAgent(tenantID, agentID string) {
 	// Remove IP lookup
 	if agent, ok := tenant.Agents[agentID]; ok && agent.IP != "" {
 		delete(m.ipToAgent, agent.IP)
+	}
+
+	// Remove container lookup
+	if agent, ok := tenant.Agents[agentID]; ok && agent.ContainerID != "" {
+		delete(m.containerToAgent, agent.ContainerID)
 	}
 
 	delete(tenant.Agents, agentID)

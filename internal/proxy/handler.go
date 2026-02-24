@@ -11,22 +11,26 @@ import (
 
 // LogEntry represents a logged request.
 type LogEntry struct {
-	Timestamp  time.Time `json:"timestamp"`
-	SourceIP   string    `json:"source_ip,omitempty"`
-	AgentID    string    `json:"agent_id,omitempty"`
-	AgentToken string    `json:"agent_token,omitempty"`
-	Domain     string    `json:"domain"`
-	Method     string    `json:"method"`
-	Action     string    `json:"action"` // "allow" or "block"
-	Reason     string    `json:"reason,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
+	SourceIP    string    `json:"source_ip,omitempty"`
+	AgentID     string    `json:"agent_id,omitempty"`
+	AgentToken  string    `json:"agent_token,omitempty"`
+	ContainerID string    `json:"container_id,omitempty"`
+	Domain      string    `json:"domain"`
+	Method      string    `json:"method"`
+	Action      string    `json:"action"` // "allow" or "block"
+	Reason      string    `json:"reason,omitempty"`
 }
 
-// AgentRegistry validates agent source IPs.
-// Implement this interface to control which IPs can use the proxy.
+// AgentRegistry validates agent source IPs and containers.
+// Implement this interface to control which IPs/containers can use the proxy.
 type AgentRegistry interface {
 	// ValidateAgentIP checks if the IP belongs to a registered agent.
 	// Returns agent ID and tier if valid, empty strings if not.
 	ValidateAgentIP(ip string) (agentID string, tier string, valid bool)
+	// ValidateAgentContainer checks if a container on a host IP is registered.
+	// Falls back to IP-based validation if containerID is empty.
+	ValidateAgentContainer(hostIP, containerID string) (agentID string, tier string, valid bool)
 }
 
 // Handler is the main proxy HTTP handler.
@@ -76,13 +80,14 @@ func extractClientIP(r *http.Request) string {
 
 // ServeHTTP handles incoming proxy requests.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Validate source IP against agent registry
+	// Validate source IP (and optionally container) against agent registry
 	sourceIP := extractClientIP(r)
-	agentID, tier, valid := h.validateSource(sourceIP)
+	containerID := r.Header.Get("X-Container-ID")
+	agentID, tier, valid := h.validateSource(sourceIP, containerID)
 
 	if !valid {
-		log.Printf(`{"timestamp":"%s","source_ip":"%s","action":"reject","reason":"unregistered agent IP"}`,
-			time.Now().UTC().Format(time.RFC3339), sourceIP)
+		log.Printf(`{"timestamp":"%s","source_ip":"%s","container_id":"%s","action":"reject","reason":"unregistered agent"}`,
+			time.Now().UTC().Format(time.RFC3339), sourceIP, containerID)
 		http.Error(w, "Forbidden: unregistered agent", http.StatusForbidden)
 		return
 	}
@@ -98,11 +103,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.handleHTTP(w, r, sourceIP, agentID)
 }
 
-// validateSource checks if the source IP is a registered agent.
-func (h *Handler) validateSource(ip string) (agentID, tier string, valid bool) {
+// validateSource checks if the source IP/container is a registered agent.
+func (h *Handler) validateSource(ip, containerID string) (agentID, tier string, valid bool) {
 	if h.registry == nil {
 		// No registry configured - allow all (backwards compatibility)
 		return "unknown", "unknown", true
+	}
+	// Use container-aware validation if container ID is provided
+	if containerID != "" {
+		return h.registry.ValidateAgentContainer(ip, containerID)
 	}
 	return h.registry.ValidateAgentIP(ip)
 }
